@@ -1,0 +1,4 @@
+# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/learn/models.py
+# hypothesis_version: 6.151.9
+
+[100, 200, 1000, 'Quiz', 'beginner', 'lessons', 'lessons.id', 'quiz_questions', 'quizzes', 'quizzes.id', 'user.id', 'user_quiz_results']

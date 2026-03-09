@@ -1,0 +1,4 @@
+# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/iam/api/v1/auth/login.py
+# hypothesis_version: 6.151.9
+
+['/login/', '/logout/', '5/minute', 'Authorization', 'Bearer ', 'Inactive user', 'Incorrect password', 'User not found', 'exp', 'ip_address', 'jti', 'lax', 'message', 'method', 'password', 'requires_otp', 'temp_token', 'unknown', 'user-agent', 'user_agent']

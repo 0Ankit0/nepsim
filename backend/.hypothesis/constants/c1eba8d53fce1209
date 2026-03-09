@@ -1,0 +1,4 @@
+# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/finance/api/v1/payment.py
+# hypothesis_version: 6.151.9
+
+[100, '/', '/initiate/', '/providers/', '/verify/', '/{transaction_id}/', 'amount', 'provider', 'purchase_order_id', 'status', 'transaction_id']

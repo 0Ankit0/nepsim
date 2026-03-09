@@ -1,0 +1,4 @@
+# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/simulator/api.py
+# hypothesis_version: 6.151.9
+
+[0.0, 100, 400, 404, '/', '/simulations', '/{simulation_id}', '/{simulation_id}/end', 'Simulation', 'holdings', 'new_cash_balance', 'portfolio_value', 'total_pnl', 'total_pnl_pct', 'total_value']

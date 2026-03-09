@@ -1,0 +1,4 @@
+# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/iam/schemas/user.py
+# hypothesis_version: 6.151.9
+
+['before', 'bio', 'confirm_password', 'first_name', 'from_attributes', 'id', 'image_url', 'last_name', 'new_password', 'password', 'phone', 'profile', 'roles', 'user_roles']

@@ -1,0 +1,4 @@
+# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/iam/api/v1/token_management.py
+# hypothesis_version: 6.151.9
+
+[100, '/', '/revoke-all', '/revoke/{token_id}', 'Revoked by user', 'Token not found', 'count', 'message', 'revoke_all', 'token_id']

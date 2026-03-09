@@ -1,0 +1,4 @@
+# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/finance/services/esewa.py
+# hypothesis_version: 6.151.9
+
+[200, ',', 'AMBIGUOUS', 'CANCELED', 'COMPLETE', 'FULL_REFUND', 'NOT_FOUND', 'PARTIAL_REFUND', 'PENDING', 'callback', 'form_action', 'form_fields', 'main/v2/form', 'note', 'product_code', 'ref_id', 'status', 'status_api', 'total_amount', 'transaction/status/', 'transaction_uuid', 'utf-8']

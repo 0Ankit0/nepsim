@@ -1,0 +1,4 @@
+# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/finance/services/stripe.py
+# hypothesis_version: 6.151.9
+
+['card', 'complete', 'currency', 'expired', 'name', 'open', 'paid', 'payment', 'payment_intent', 'payment_status', 'price_data', 'product_data', 'purchase_order_id', 'quantity', 'session_id', 'status', 'unit_amount', 'usd']

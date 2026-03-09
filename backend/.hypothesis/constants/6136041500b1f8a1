@@ -1,0 +1,4 @@
+# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/iam/api/v1/users.py
+# hypothesis_version: 6.151.9
+
+[100, 120, 300, 1024, '.', '/', '/me', '/me/avatar', '/users', '/{user_id}', 'User not found', 'avatars', 'bio', 'email', 'file_size_bytes', 'file_type', 'first_name', 'id', 'image/gif', 'image/jpeg', 'image/png', 'image/webp', 'image_url', 'is_active', 'is_confirmed', 'is_superuser', 'jpg', 'last_name', 'message', 'otp_enabled', 'otp_verified', 'phone', 'roles', 'updated_fields', 'username', 'users:list:*', 'wb']

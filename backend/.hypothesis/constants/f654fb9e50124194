@@ -1,0 +1,4 @@
+# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/notification/services/notification.py
+# hypothesis_version: 6.151.9
+
+['body', 'created_at', 'email', 'extra_data', 'first_name', 'id', 'is_read', 'name', 'notification', 'notification.new', 'title', 'type', 'user']

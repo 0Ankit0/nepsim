@@ -1,0 +1,4 @@
+# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/finance/services/khalti.py
+# hypothesis_version: 6.151.9
+
+[200, 'Authorization', 'Completed', 'Content-Type', 'Expired', 'Pending', 'Refunded', 'User canceled', 'amount', 'application/json', 'customer_info', 'email', 'mobile', 'name', 'payment_url', 'pidx', 'purchase_order_id', 'purchase_order_name', 'return_url', 'status', 'total_amount', 'transaction_id', 'website_url']

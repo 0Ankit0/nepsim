@@ -1,0 +1,115 @@
+# =============================================================================
+# Backend .gitignore — Python 3.14 / FastAPI / SQLModel / uv / Alembic / Celery
+# =============================================================================
+
+# ─── Python Bytecode ─────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+*.pyo
+*.pyd
+
+# ─── uv / Virtual Environments ───────────────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+.python-version
+# uv.lock is intentionally tracked for reproducibility
+# uv.lock  # <-- do NOT ignore this
+
+# ─── Distribution / Packaging ────────────────────────────────────────────────
+dist/
+build/
+*.egg-info/
+*.egg
+.eggs/
+wheels/
+sdist/
+MANIFEST
+
+# ─── Testing & Coverage ──────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.tox/
+.nox/
+*.log
+
+# ─── Mypy / Type Checkers ────────────────────────────────────────────────────
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+.ruff_cache/
+
+# ─── Environment & Secrets ───────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+.env.production
+.env.staging
+!.env.example
+
+# ─── Database Files ──────────────────────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+app.db
+
+# ─── Alembic ─────────────────────────────────────────────────────────────────
+# Track migrations; ignore generated temp files
+alembic/versions/*.pyc
+
+# ─── Celery ──────────────────────────────────────────────────────────────────
+celerybeat-schedule
+celerybeat-schedule.*
+celery_worker.log
+
+# ─── Media / Uploads ─────────────────────────────────────────────────────────
+media/
+uploads/
+static/collected/
+
+# ─── ML / Data (backend-specific) ────────────────────────────────────────────
+data/raw/
+data/processed/
+mlruns/
+experiments/
+*.parquet
+*.h5
+*.pkl
+*.joblib
+*.pt
+*.pth
+*.onnx
+*.safetensors
+*.npz
+*.npy
+
+# ─── Jupyter Notebooks (outputs) ─────────────────────────────────────────────
+.ipynb_checkpoints/
+notebooks/.ipynb_checkpoints/
+
+# ─── VS Code ─────────────────────────────────────────────────────────────────
+.vscode/
+*.code-workspace
+
+# ─── OS ──────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ─── Redis dump ──────────────────────────────────────────────────────────────
+dump.rdb
+
+# ─── QR Codes / Generated Images ─────────────────────────────────────────────
+*.png
+!**/static/**/*.png
+!**/templates/**/*.png
+
+# ─── Profiling ───────────────────────────────────────────────────────────────
+*.prof

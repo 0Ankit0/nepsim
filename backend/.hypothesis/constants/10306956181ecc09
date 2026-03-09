@@ -1,0 +1,4 @@
+# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/learn/api.py
+# hypothesis_version: 6.151.9
+
+[403, 404, '/learn', '/lessons', '/lessons/{lesson_id}', '/quiz-progress', '/quizzes', '/quizzes/{quiz_id}', 'Learning & Quizzes', 'Lesson not found.', 'Quiz not found.', 'completed_lesson_ids', 'questions']

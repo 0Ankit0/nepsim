@@ -1,0 +1,4 @@
+# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/websocket/schemas/__init__.py
+# hypothesis_version: 6.151.9
+
+['WSAckMessage', 'WSBroadcastMessage', 'WSEncryptedFrame', 'WSErrorMessage', 'WSEventMessage', 'WSHandshakeMessage', 'WSInboundMessage', 'WSJoinRoomMessage', 'WSLeaveRoomMessage', 'WSMessagePayload', 'WSMessageType', 'WSPingMessage', 'WSPongMessage', 'WSPresenceMessage', 'WSRoomMessage', 'WSStatsResponse', 'WSSystemMessage', 'WSTypingMessage']

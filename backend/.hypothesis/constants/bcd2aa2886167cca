@@ -1,0 +1,4 @@
+# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/iam/api/v1/auth/social.py
+# hypothesis_version: 6.151.9
+
+[302, '/social/providers/', '/social/{provider}/', 'Accept', 'Authorization', 'FastAPI-Template/1.0', 'User-Agent', 'access_token', 'application/json', 'authorization_code', 'client_id', 'client_secret', 'code', 'email', 'emails_url', 'exp', 'extra_params', 'facebook', 'github', 'google', 'grant_type', 'ip_address', 'jti', 'lax', 'primary', 'provider', 'providers', 'redirect_uri', 'scope', 'state', 'token_url', 'unknown', 'user-agent', 'user_agent', 'userinfo_url', 'verified']

@@ -1,0 +1,4 @@
+# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/core/security.py
+# hypothesis_version: 6.151.9
+
+['HS256', 'access', 'auto', 'bcrypt', 'bearer', 'data', 'email_verification', 'exp', 'jti', 'nonce', 'oauth_state', 'password_reset', 'refresh', 'sub', 'temp_auth', 'type']

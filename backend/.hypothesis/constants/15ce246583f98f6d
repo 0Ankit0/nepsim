@@ -1,0 +1,4 @@
+# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/simulator/models.py
+# hypothesis_version: 6.151.9
+
+[25.0, 100000.0, 100, 255, 'active', 'analysing', 'analysis_ready', 'buy', 'ended', 'executed', 'partial', 'paused', 'rejected', 'sell', 'simulations', 'simulations.id', 'trades', 'user.id']

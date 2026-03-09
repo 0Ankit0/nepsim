@@ -1,0 +1,4 @@
+# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/notification/schemas/__init__.py
+# hypothesis_version: 6.151.9
+
+['NotificationCreate', 'NotificationList', 'NotificationRead', 'NotificationUpdate']

@@ -1,0 +1,4 @@
+# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/notification/models/notification.py
+# hypothesis_version: 6.151.9
+
+[255, 2000, 'User', 'auth', 'error', 'info', 'notifications', 'payment', 'success', 'system', 'user.id', 'warning']

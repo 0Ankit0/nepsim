@@ -1,0 +1,4 @@
+# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/websocket/deps.py
+# hypothesis_version: 6.151.9
+
+[4001, 'Missing token', 'code', 'detail', 'error', 'jti', 'token', 'type']

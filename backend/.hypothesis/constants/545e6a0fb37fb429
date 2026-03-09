@@ -1,0 +1,4 @@
+# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/iam/api/v1/rbac.py
+# hypothesis_version: 6.151.9
+
+[100, 120, 300, 404, 600, 900, '/permissions', '/roles', '/roles/{role_id}', '/users/assign-role', '/users/remove-role', 'Role not found', 'domain', 'global', 'message', 'permissions', 'permissions:list:*', 'role_permission_id', 'roles', 'roles:list:*', 'success', 'user_id', 'user_role_id']

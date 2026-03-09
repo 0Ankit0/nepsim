@@ -1,0 +1,4 @@
+# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/iam/services/email.py
+# hypothesis_version: 6.151.9
+
+['email', 'email_verification', 'first_name', 'name', 'password_reset', 'purpose', 'templates', 'token', 'user_id', 'username']

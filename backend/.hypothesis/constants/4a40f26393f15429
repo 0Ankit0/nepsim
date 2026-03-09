@@ -1,0 +1,4 @@
+# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/finance/services/paypal.py
+# hypothesis_version: 6.151.9
+
+['USD', 'amount', 'approval_url', 'approved', 'cancel_url', 'canceled', 'client_id', 'client_secret', 'completed', 'created', 'currency', 'description', 'expired', 'failed', 'intent', 'invoice_number', 'mode', 'payer', 'payer_id', 'payment_id', 'payment_method', 'paypal', 'pending', 'redirect_urls', 'return_url', 'sale', 'state', 'total', 'transactions']

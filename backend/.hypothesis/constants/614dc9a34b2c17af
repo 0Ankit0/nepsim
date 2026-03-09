@@ -1,0 +1,4 @@
+# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/multitenancy/schemas/tenant.py
+# hypothesis_version: 6.151.9
+
+['from_attributes', 'id', 'invited_by', 'owner_id', 'slug', 'tenant_id', 'user_id']

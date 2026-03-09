@@ -1,0 +1,17 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+
+[dev-packages]
+pytest = "*"
+pytest-asyncio = "*"
+pytest-cov = "*"
+factory-boy = "*"
+httpx = "*"
+hypothesis = "*"
+
+[requires]
+python_version = "3.14"

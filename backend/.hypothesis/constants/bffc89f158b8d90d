@@ -1,0 +1,4 @@
+# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/iam/api/v1/auth/otp.py
+# hypothesis_version: 6.151.9
+
+['/otp/disable/', '/otp/enable/', '/otp/validate/', '/otp/verify/', 'Incorrect password', 'Invalid OTP code', 'OTP is not enabled', 'PNG', 'User not found', 'black', 'exp', 'ip_address', 'jti', 'lax', 'message', 'otp_auth_url', 'otp_base32', 'qr_code', 'sub', 'unknown', 'user-agent', 'user_agent', 'white']

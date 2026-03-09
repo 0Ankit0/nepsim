@@ -1,0 +1,4 @@
+# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/websocket/manager.py
+# hypothesis_version: 6.151.9
+
+[4001, 4003, 'data', 'message', 'room', 'target', 'type', 'value', 'ws:events']

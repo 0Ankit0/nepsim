@@ -1,0 +1,4 @@
+# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/multitenancy/models/tenant.py
+# hypothesis_version: 6.151.9
+
+[100, 255, 500, 'CASCADE', 'Tenant description', 'TenantInvitation', 'TenantMember', 'User', '[Tenant.owner_id]', 'accepted', 'admin', 'expired', 'foreign_keys', 'invitations', 'member', 'members', 'owned_tenants', 'owner', 'pending', 'revoked', 'sent_invitations', 'tenant', 'tenant.id', 'tenant_memberships', 'user.id']

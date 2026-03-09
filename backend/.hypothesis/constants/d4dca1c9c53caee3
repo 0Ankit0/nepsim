@@ -1,0 +1,4 @@
+# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/market/schemas.py
+# hypothesis_version: 6.151.9
+
+[0.1, 2.0, 100.0, 'from_attributes', 'listed']
