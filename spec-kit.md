@@ -8,6 +8,171 @@
 
 ---
 
+## `/speckit.constitution` - Project Principles & Constraints
+
+This section defines the immutable architectural principles that govern how this project is built and maintained. These principles ensure consistency, quality, and maintainability throughout the development lifecycle.
+
+### Article I: Simplicity First
+**Principle**: Start with the simplest solution that solves the user's problem. Add complexity only when proven necessary by real-world usage.
+
+**Application to this project**:
+- MVP uses 3 core projects: Backend (Python FastAPI), Frontend (flutter), Database (PostgreSQL)
+- No microservices architecture - single monolithic backend initially
+- No premature optimization for scale - build for 100 users before worrying about 10,000
+- Daily trading resolution only - no intraday complexity until proven needed
+- Direct framework usage - no custom abstractions over FastAPI, flutter, or sqlmodel
+
+**Exceptions requiring justification**:
+- MLFlow/DVC for ML experiment tracking - [NEEDS REVIEW: Essential for MVP or defer to Phase 5?]
+
+### Article II: Test-First Development
+**Principle**: No implementation code shall be written before tests are defined, approved, and verified to fail.
+
+**Application to this project**:
+1. **Contract Tests First**: API contracts in `contracts/` directory must be defined before any endpoint implementation
+2. **Integration Tests Before Unit Tests**: Test with real PostgreSQL, real LLM API - no mocks for external services
+3. **Test Order**: Contract tests → Integration tests → E2E tests → Unit tests (reverse of traditional)
+4. **Acceptance-Driven**: Every user story acceptance scenario becomes an automated test
+
+**Phase -1 Gate**: Cannot proceed to Phase 0 without:
+- [ ] All API contracts defined in OpenAPI format
+- [ ] Contract test framework set up
+- [ ] Database integration test setup with real PostgreSQL
+
+### Article III: Data is Sacred
+**Principle**: User data, trading history, and learning progress are the most valuable assets. Protect them rigorously.
+
+**Application to this project**:
+- All simulations persist to database - never lost on app crash
+- Chart drawings auto-save every 30 seconds
+- Quiz progress tracked and never deleted
+- AI analysis results stored permanently for reference
+- Database backups automated (deployment-specific implementation)
+- No data deletion without explicit user consent and confirmation
+
+**Security Requirements** (to be detailed in implementation):
+- Encryption at rest for user credentials
+- Secure API communication (HTTPS only in production)
+- Input validation on all user-provided data
+- SQL injection prevention via sqlmodel ORM
+
+### Article IV: AI as Teacher, Not Oracle
+**Principle**: AI-generated content (feedback, insights, explanations) must be educational, empathetic, and actionable - never judgmental or absolute.
+
+**Application to this project**:
+- AI feedback structured as "What You Did Right/Wrong/Could Have Done" - not "You Failed"
+- Explanations include context and reasoning, not just answers
+- Educational content reviewed for accuracy (manual or AI-assisted review pipeline)
+- AI insights labeled as suggestions, not guaranteed predictions
+- Failure modes graceful - generic feedback if AI generation fails
+
+**LLM Prompt Engineering Principles**:
+- Include market context in every analysis prompt
+- Request specific examples from NEPSE data
+- Ask for counterfactual reasoning ("what if they had...")
+- Require empathetic tone in all feedback
+- Request actionable next steps, not just criticism
+
+### Article V: Performance as Feature
+**Principle**: Performance is not optimization; it's a core user experience requirement from day one.
+
+**Application to this project**:
+- Chart rendering at 60 FPS (SC-007) - non-negotiable for MVP
+- Indicator calculation <2 seconds (SC-005) - measured and enforced
+- Quiz feedback <500ms (SC-012) - users expect instant feedback
+- AI analysis <30 seconds (SC-006) - longer requires progress indicator
+
+**Performance Budget**:
+- Mobile app bundle size: <50MB initial download
+- API response time (p95): <500ms for data queries, <2s for computations
+- Database query time (p95): <100ms for reads, <500ms for writes
+- Chart data loading: <1s for 2 years of daily data
+
+### Article VI: Mobile-First, Always
+**Principle**: The mobile experience is the primary experience. Web is a secondary target.
+
+**Application to this project**:
+- flutter mobile app is the primary development focus (iOS/Android)
+- Touch interactions designed first (tap, swipe, pinch-zoom, long-press)
+- Offline-capable where possible (cached chart data, educational content)
+- Network-resilient (graceful degradation when API unavailable)
+- Web support via nextjs is secondary goal (Phase 5)
+
+**Design Constraints**:
+- All UI must work on 4.7" screen (iPhone SE) - minimum supported size
+- Touch targets minimum 44x44 points (iOS HIG standard)
+- No hover-dependent interactions (no mouse on mobile)
+- Gestures discoverable and intuitive (no hidden multi-finger gestures)
+
+### Article VII: Fail Gracefully, Learn Loudly
+**Principle**: Failures are inevitable. Handle them gracefully for users, log them loudly for developers.
+
+**Application to this project**:
+- Every error shows user-friendly message + recovery action
+- All errors logged with full context (user action, system state, stack trace)
+- Retry mechanisms for transient failures (network, API rate limits)
+- Fallback behaviors defined for every critical path:
+  - AI analysis fails → show generic feedback + retry button
+  - Chart data unavailable → show cached data + reload option
+  - LLM API unavailable → queue analysis for later + notify user
+  - Database connection lost → local state persists, sync when reconnected
+
+**Error Tracking**:
+- Crash reporting integrated (Sentry or similar) - Phase 0 requirement
+- User-initiated error reports with context (SC-010: 90% ops without crashes)
+- Automated alerts for critical failures (AI generation fails >50% of requests)
+
+### Article VIII: Accessibility is Non-Negotiable
+**Principle**: The app must be usable by learners with different abilities from day one.
+
+**Application to this project**:
+- VoiceOver/TalkBack support for all screens (iOS/Android screen readers)
+- Dynamic type support (text scales with user's system settings)
+- Sufficient color contrast (WCAG AA minimum: 4.5:1 for normal text)
+- No color-only information (e.g., red/green for profit/loss needs icons too)
+- Alt text for all educational diagrams and charts
+- Keyboard navigation for flutter Web version
+
+**Testing Requirements**:
+- Manual accessibility testing with VoiceOver/TalkBack before each release
+- Automated accessibility linting in CI/CD pipeline
+- User testing with learners who use assistive technologies (Phase 4+)
+
+### Article IX: Version Control as Source of Truth
+**Principle**: The specification, plan, and code are versioned together. The git history tells the complete story of the project's evolution.
+
+**Application to this project**:
+- Feature branch `001-nepse-simulator` contains all specification documents
+- Commit messages reference user stories (e.g., "Implement P1: Trading simulation endpoint")
+- Major spec changes documented in "Document Evolution" section
+- Breaking changes require migration guides in commits
+- Database migrations tracked in Alembic, versioned with code
+
+**Workflow**:
+1. Update specification documents in feature branch
+2. Create supporting documents (data-model, contracts, etc.)
+3. Implement with tests-first approach
+4. Merge to main only when phase deliverable complete
+
+### Constitutional Review & Evolution
+
+**Review Cadence**: Review these principles at the end of each implementation phase (0-5)
+
+**Amendment Process**:
+1. Identify principle that needs modification
+2. Document specific situation that revealed the need
+3. Propose amendment with rationale
+4. Discuss with all project stakeholders
+5. Update constitution with dated amendment note
+6. Assess impact on existing code and specs
+
+**Current Status**: 
+- Constitution v1.0 - Established 2025-10-25 alongside initial specification
+- No amendments yet
+- Next review: End of Phase 0 (Setup & Data Foundation)
+
+---
+
 ## `/speckit.specify` - Feature Overview
 
 Build a gamified NEPSE (Nepal Stock Exchange) trading simulator that enables users to learn stock trading through practice with virtual money. Users simulate real market conditions, make buy/sell decisions, and receive AI-powered deep-dive analysis of their performance, mistakes, and opportunities for improvement—transforming trading education into an interactive, feedback-rich learning experience.
@@ -152,14 +317,14 @@ Build a gamified NEPSE (Nepal Stock Exchange) trading simulator that enables use
 ### Technology Stack
 
 **Backend**: Python 3.11+ with FastAPI
-**Frontend**: React Native (cross-platform mobile: iOS, Android, Web)
+**Frontend**: flutter (cross-platform mobile: iOS, Android, Web)
 **Database**: PostgreSQL (daily time-series data, user progress, simulations)
 **LLM Integration**: OpenAI GPT-4 API or Anthropic Claude API (for AI feedback generation)
 **Deep Learning** (optional): PyTorch, PyTorch Lightning (for price prediction models, pattern recognition)
 **Data Processing**: pandas, numpy, pyarrow (Parquet)
 **Technical Indicators**: pandas-ta or ta-lib (50+ indicators for charting and AI insights)
-**Charting Library**: React Native chart library with custom overlays (Victory Native, react-native-chart-kit, or custom canvas)
-**ORM**: SQLAlchemy with asyncpg for PostgreSQL
+**Charting Library**: flutter chart library with custom overlays (Victory Native, react-native-chart-kit, or custom canvas)
+**ORM**: sqlmodel with asyncpg for PostgreSQL
 **API**: FastAPI with async support
 **Caching** (optional): Redis for session state and chart data
 **Task Queue** (optional): Celery or RQ for async AI analysis generation
@@ -188,7 +353,7 @@ Backend (Python FastAPI)
 ├── tests/                  # Unit, integration tests
 └── alembic/                # Database migrations
 
-Frontend (React Native)
+Frontend (flutter)
 ├── src/
 │   ├── screens/            # Main app screens
 │   │   ├── DataUpload/     # Upload and preview datasets
@@ -289,7 +454,7 @@ Database (PostgreSQL + pgvector)
   - `GET /api/users/{id}/quiz-progress` → Get user's quiz completion and scores
   - `POST /api/learn/ai-insights` → Get AI explanation of stock/concept
 
-#### 7. React Native Frontend (`frontend/`)
+#### 7. flutter Frontend (`frontend/`)
 - **Screens**:
   - **Home/Dashboard** (Tab Navigation):
     - **Tab 1 - Start New Simulation**: Primary CTA to begin new trading simulation, configure starting capital, view active simulation status
@@ -373,14 +538,14 @@ Database (PostgreSQL + pgvector)
 Before beginning implementation, validate against architectural principles:
 
 #### Simplicity Gate
-- [x] Using ≤3 core projects? **YES** - Backend (Python FastAPI), Frontend (React Native), Database (PostgreSQL)
+- [x] Using ≤3 core projects? **YES** - Backend (Python FastAPI), Frontend (flutter), Database (PostgreSQL)
 - [x] No future-proofing? **YES** - MVP focuses on daily trading only, no premature intraday support
 - [x] No speculative features? **YES** - All features trace to prioritized user stories (P1-P5)
 - [ ] **NEEDS REVIEW**: MLFlow and DVC add complexity - are these essential for MVP or Phase 5?
 
 #### Anti-Abstraction Gate
-- [x] Using frameworks directly? **YES** - FastAPI, React Native, SQLAlchemy used without wrappers
-- [x] Single model representation? **YES** - One SQLAlchemy model per entity, no parallel representations
+- [x] Using frameworks directly? **YES** - FastAPI, flutter, sqlmodel used without wrappers
+- [x] Single model representation? **YES** - One sqlmodel model per entity, no parallel representations
 - [x] No unnecessary interfaces? **YES** - Direct database access via services, no repository pattern abstraction
 
 #### Integration-First Gate
@@ -394,8 +559,8 @@ No complexity exceptions approved yet. Any deviations from simplicity principles
 ---
 
 **Phase 0: Setup & Data Foundation** (Week 0)
-- Backend: Repository structure, pyproject.toml, dependencies (FastAPI, SQLAlchemy, asyncpg, pandas, etc.)
-- Frontend: React Native project setup with Expo
+- Backend: Repository structure, pyproject.toml, dependencies (FastAPI, sqlmodel, asyncpg, pandas, etc.)
+- Frontend: flutter project setup with Expo
 - Database: PostgreSQL setup, initial schema (users, simulations, trades, market_data, stocks)
 - Load historical NEPSE data into database
 - LLM API setup (OpenAI/Claude account, test prompts)
@@ -496,8 +661,8 @@ No complexity exceptions approved yet. Any deviations from simplicity principles
 
 ### Phase 0: Setup [P]
 - [ ] [P] Create backend repository structure (data/, src/, experiments/, tests/, alembic/)
-- [ ] [P] Create `pyproject.toml` with dependencies (FastAPI, SQLAlchemy, asyncpg, PyTorch, pandas, pyarrow, pandas-ta, mlflow, dvc, pytest)
-- [ ] [P] Create React Native project (`npx create-expo-app` or `npx react-native init`)
+- [ ] [P] Create `pyproject.toml` with dependencies (FastAPI, sqlmodel, asyncpg, PyTorch, pandas, pyarrow, pandas-ta, mlflow, dvc, pytest)
+- [ ] [P] Create flutter project (`npx create-expo-app` or `npx react-native init`)
 - [ ] [P] Install PostgreSQL and pgvector extension
 - [ ] [P] Create initial database schema (symbols, ohlcv_data, models, backtests, trades)
 - [ ] [P] Initialize Alembic for database migrations
@@ -522,7 +687,7 @@ No complexity exceptions approved yet. Any deviations from simplicity principles
 - [ ] Implement GET `/api/ohlcv/{symbol}` endpoint
 - [ ] Write unit tests for parsers (`tests/test_ingestion.py`)
 - [ ] Write API integration tests (`tests/test_api.py`)
-- [ ] [P] Create React Native API client (`frontend/src/services/api.js`)
+- [ ] [P] Create flutter API client (`frontend/src/services/api.js`)
 - [ ] [P] Create DataUpload screen (`frontend/src/screens/DataUpload.js`)
 - [ ] [P] Create DataPreview screen (`frontend/src/screens/DataPreview.js`)
 - [ ] [P] Implement file picker and upload functionality
@@ -571,7 +736,7 @@ No complexity exceptions approved yet. Any deviations from simplicity principles
 - [ ] Implement GET `/api/simulate/{id}/trades` endpoint (get trade history)
 - [ ] Implement GET `/api/simulate/{id}/metrics` endpoint (get performance metrics)
 - [ ] Implement GET `/api/predictions/{model_id}/chart-data` endpoint
-- [ ] Install React Native chart library (Victory Native or react-native-svg-charts)
+- [ ] Install flutter chart library (Victory Native or react-native-svg-charts)
 - [ ] Create reusable chart components (`frontend/src/components/Charts/`)
 - [ ] Create Results screen with tabs (`frontend/src/screens/Results.js`)
 - [ ] Implement price chart with predictions overlay
@@ -594,7 +759,7 @@ No complexity exceptions approved yet. Any deviations from simplicity principles
 - [ ] [P] Implement WebSocket endpoints for real-time updates (`src/api/websockets.py`)
 - [ ] [P] Implement portfolio recommendations screen with AI-suggested strategies
 - [ ] [P] Add push notifications for job completion
-- [ ] [P] Create React Native Web build for desktop access
+- [ ] [P] Create flutter Web build for desktop access
 - [ ] [P] Implement JWT authentication (backend + frontend)
 - [ ] [P] Add more drawing tools (Andrews Pitchfork, Gann Fan, Elliott Wave tools)
 - [ ] [P] Implement chart templates (save/load entire chart setups)
@@ -634,7 +799,7 @@ This specification should be accompanied by the following documents (to be creat
    - Charting library comparison (Victory Native vs react-native-chart-kit vs custom canvas)
    - Technical indicator library evaluation (pandas-ta vs ta-lib)
    - LLM provider comparison (OpenAI GPT-4 vs Anthropic Claude)
-   - React Native chart performance benchmarks
+   - flutter chart performance benchmarks
    - PostgreSQL time-series optimization strategies
 
 ### Optional Supporting Documents
@@ -670,7 +835,7 @@ This specification should be accompanied by the following documents (to be creat
 - **FR-012**: System MUST handle corporate actions (splits, dividends) by adjusting historical prices with audit log
 - **FR-013**: System MUST store all data in PostgreSQL with proper indexing for daily time-series queries
 - **FR-014**: System MUST support pgvector extension for feature embeddings and similarity search [Optional for MVP]
-- **FR-015**: Frontend MUST be built with React Native supporting iOS, Android, and Web platforms
+- **FR-015**: Frontend MUST be built with flutter supporting iOS, Android, and Web platforms
 - **FR-016**: Frontend MUST communicate with backend exclusively via REST API
 - **FR-017**: Frontend MUST display advanced interactive charts with 50+ technical indicators, professional drawing tools (trendlines, Fibonacci, channels, shapes), and persistent annotations
 - **FR-018**: System MUST support async operations for long-running tasks (training, backtesting, AI analysis) with status polling
