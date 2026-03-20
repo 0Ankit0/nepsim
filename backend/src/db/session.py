@@ -31,6 +31,8 @@ async def init_db():
     import src.apps.ai_analysis.models  # noqa: F401
     import src.apps.gamification.models  # noqa: F401
     import src.apps.learn.models  # noqa: F401
+    import src.apps.portfolio.models  # noqa: F401
+    import src.apps.watchlist.models  # noqa: F401
 
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)

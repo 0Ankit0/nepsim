@@ -1,22 +1,25 @@
-"""Market app — service layer for NEPSE data queries and indicator computation."""
+"""Market app — service layer. All price/indicator data comes from Supabase.
+
+StockMetadata and ChartDrawing operations still use the local DB.
+"""
 from __future__ import annotations
 
 from datetime import date
 from typing import Optional
 
 import pandas as pd
-import ta  # type: ignore  — pure-Python, no numba/llvmlite dependency
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select, and_
 
-from .models import StockMetadata, MarketDataOHLCV, ChartDrawing
-from .schemas import IndicatorRequest, IndicatorDataPoint, OHLCVPoint
+from .models import StockMetadata, ChartDrawing
+from .schemas import IndicatorRequest, IndicatorDataPoint
+from .supabase_service import SupabaseMarketService
 
 
 class MarketService:
-    """Business logic for market data queries and technical indicator calculation."""
+    """Business logic for market data queries and indicator computation."""
 
-    # ── Stocks ──────────────────────────────────────────────────────────────
+    # ── Stocks (local metadata table — lot size, sector etc.) ───────────────
 
     @staticmethod
     async def get_all_stocks(
@@ -66,7 +69,7 @@ class MarketService:
         await db.commit()
         return True
 
-    # ── OHLCV History ───────────────────────────────────────────────────────
+    # ── OHLCV History (Supabase) ─────────────────────────────────────────────
 
     @staticmethod
     async def get_ohlcv(
@@ -75,75 +78,54 @@ class MarketService:
         start_date: Optional[date] = None,
         end_date: Optional[date] = None,
         limit: int = 500,
-    ) -> list[MarketDataOHLCV]:
-        stmt = select(MarketDataOHLCV).where(
-            MarketDataOHLCV.symbol == symbol.upper()
+    ) -> list:
+        """Fetch OHLCV rows from Supabase historicdata table."""
+        start_str = start_date.isoformat() if start_date else None
+        end_str = end_date.isoformat() if end_date else None
+        return await SupabaseMarketService.get_historic_data(
+            symbol.upper(), start_str, end_str, limit
         )
-        if start_date:
-            stmt = stmt.where(MarketDataOHLCV.trade_date >= start_date)
-        if end_date:
-            stmt = stmt.where(MarketDataOHLCV.trade_date <= end_date)
-        stmt = stmt.order_by(MarketDataOHLCV.trade_date.asc()).limit(limit)
-        result = await db.execute(stmt)
-        return result.scalars().all()  # type: ignore
 
     @staticmethod
     async def get_latest_price(
         db: AsyncSession, symbol: str
-    ) -> Optional[MarketDataOHLCV]:
-        result = await db.execute(
-            select(MarketDataOHLCV)
-            .where(MarketDataOHLCV.symbol == symbol.upper())
-            .order_by(MarketDataOHLCV.trade_date.desc())
-            .limit(1)
-        )
-        return result.scalar_one_or_none()
+    ) -> Optional[object]:
+        """Return the most recent historicdata row for a symbol."""
+        return await SupabaseMarketService.get_latest_quote(symbol.upper())
 
     @staticmethod
     async def get_price_on_date(
         db: AsyncSession, symbol: str, sim_date: date
     ) -> Optional[float]:
-        """Get closing price on or before a given simulated date."""
-        result = await db.execute(
-            select(MarketDataOHLCV)
-            .where(
-                and_(
-                    MarketDataOHLCV.symbol == symbol.upper(),
-                    MarketDataOHLCV.trade_date <= sim_date,
-                )
-            )
-            .order_by(MarketDataOHLCV.trade_date.desc())
-            .limit(1)
-        )
-        record = result.scalar_one_or_none()
-        return record.close if record else None
-
-    # ── Technical Indicators ─────────────────────────────────────────────────
-
-    @staticmethod
-    def _to_dataframe(records: list[MarketDataOHLCV]) -> pd.DataFrame:
-        df = pd.DataFrame(
-            [
-                {
-                    "date": r.trade_date,
-                    "open": r.open,
-                    "high": r.high,
-                    "low": r.low,
-                    "close": r.close,
-                    "volume": float(r.volume),
-                }
-                for r in records
-            ]
-        )
-        df["date"] = pd.to_datetime(df["date"])
-        df = df.set_index("date").sort_index()
-        return df
-
-    @staticmethod
-    def _clean(val) -> Optional[float]:
-        if val is None or (isinstance(val, float) and not (val == val)):
+        """
+        Get closing price on or before a given simulated date from Supabase.
+        Falls back through up to 7 prior days to handle weekends/holidays.
+        """
+        # Try the given date and up to 7 prior days (to skip weekends/holidays)
+        from src.db.supabase import get_supabase_client
+        client = await get_supabase_client()
+        if not client:
             return None
-        return round(float(val), 2)
+        try:
+            result = await (
+                client.table("historicdata")
+                .select("ltp, close")
+                .eq("symbol", symbol.upper())
+                .lte("date", sim_date.isoformat())
+                .order("date", desc=True)
+                .limit(1)
+                .execute()
+            )
+            rows = result.data or []
+            if not rows:
+                return None
+            row = rows[0]
+            # Prefer ltp (last traded price), fall back to close
+            return float(row.get("ltp") or row.get("close") or 0) or None
+        except Exception:
+            return None
+
+    # ── Technical Indicators (Supabase pre-computed) ─────────────────────────
 
     @staticmethod
     async def compute_indicators(
@@ -151,155 +133,95 @@ class MarketService:
         req: IndicatorRequest,
     ) -> list[IndicatorDataPoint]:
         """
-        Compute requested technical indicator using the `ta` library.
-        Supports: rsi, macd, bb/bbands, ema, sma, atr, obv, cci, vwap, stoch, adx, williams_r, mfi
+        Return pre-computed indicator values from Supabase indicators table.
+        Maps Supabase columns to IndicatorDataPoint fields.
         """
-        records = await MarketService.get_ohlcv(
-            db, req.symbol, req.start_date, req.end_date, limit=1000
+        from datetime import datetime
+        start_str = req.start_date.isoformat() if req.start_date else None
+        end_str = req.end_date.isoformat() if req.end_date else None
+        rows = await SupabaseMarketService.get_indicators(
+            req.symbol.upper(), start_str, end_str, limit=1000
         )
-        if not records:
+        if not rows:
             return []
 
-        df = MarketService._to_dataframe(records)
         ind = req.indicator.lower()
         points: list[IndicatorDataPoint] = []
-        clean = MarketService._clean
 
-        # ── RSI ────────────────────────────────────────────────────────────
-        if ind == "rsi":
-            series = ta.momentum.RSIIndicator(close=df["close"], window=req.period).rsi()
-            for ts, val in series.items():
-                points.append(IndicatorDataPoint(date=ts.date(), value=clean(val)))
+        def parse_date(d: Optional[str]) -> Optional[date]:
+            if not d:
+                return None
+            try:
+                return datetime.fromisoformat(d).date()
+            except Exception:
+                try:
+                    return date.fromisoformat(d)
+                except Exception:
+                    return None
 
-        # ── MACD ───────────────────────────────────────────────────────────
-        elif ind == "macd":
-            macd_ind = ta.trend.MACD(
-                close=df["close"],
-                window_slow=req.slow or 26,
-                window_fast=req.fast or 12,
-                window_sign=req.signal or 9,
-            )
-            macd_s = macd_ind.macd()
-            signal_s = macd_ind.macd_signal()
-            hist_s = macd_ind.macd_diff()
-            for ts in macd_s.index:
+        def clean(val: Optional[float]) -> Optional[float]:
+            if val is None:
+                return None
+            return round(float(val), 2)
+
+        for row in rows:
+            d = parse_date(row.date)
+            if not d:
+                continue
+
+            if ind == "rsi":
+                points.append(IndicatorDataPoint(date=d, value=clean(row.rsi_14)))
+            elif ind == "macd":
                 points.append(IndicatorDataPoint(
-                    date=ts.date(),
-                    macd=clean(macd_s[ts]),
-                    signal=clean(signal_s[ts]),
-                    histogram=clean(hist_s[ts]),
+                    date=d,
+                    macd=clean(row.macd_line),
+                    signal=clean(row.macd_signal),
+                    histogram=clean(row.macd_hist),
                 ))
-
-        # ── Bollinger Bands ─────────────────────────────────────────────────
-        elif ind in ("bb", "bbands", "bollinger"):
-            bb_ind = ta.volatility.BollingerBands(
-                close=df["close"],
-                window=req.period,
-                window_dev=req.std_dev or 2.0,
-            )
-            upper_s = bb_ind.bollinger_hband()
-            middle_s = bb_ind.bollinger_mavg()
-            lower_s = bb_ind.bollinger_lband()
-            for ts in upper_s.index:
+            elif ind in ("bb", "bbands", "bollinger"):
                 points.append(IndicatorDataPoint(
-                    date=ts.date(),
-                    upper=clean(upper_s[ts]),
-                    middle=clean(middle_s[ts]),
-                    lower=clean(lower_s[ts]),
+                    date=d,
+                    upper=clean(row.bb_upper),
+                    lower=clean(row.bb_lower),
                 ))
-
-        # ── EMA ────────────────────────────────────────────────────────────
-        elif ind == "ema":
-            series = ta.trend.EMAIndicator(close=df["close"], window=req.period).ema_indicator()
-            for ts, val in series.items():
-                points.append(IndicatorDataPoint(date=ts.date(), value=clean(val)))
-
-        # ── SMA ────────────────────────────────────────────────────────────
-        elif ind == "sma":
-            series = ta.trend.SMAIndicator(close=df["close"], window=req.period).sma_indicator()
-            for ts, val in series.items():
-                points.append(IndicatorDataPoint(date=ts.date(), value=clean(val)))
-
-        # ── ATR ────────────────────────────────────────────────────────────
-        elif ind == "atr":
-            series = ta.volatility.AverageTrueRange(
-                high=df["high"], low=df["low"], close=df["close"], window=req.period
-            ).average_true_range()
-            for ts, val in series.items():
-                points.append(IndicatorDataPoint(date=ts.date(), value=clean(val)))
-
-        # ── OBV ────────────────────────────────────────────────────────────
-        elif ind == "obv":
-            series = ta.volume.OnBalanceVolumeIndicator(
-                close=df["close"], volume=df["volume"]
-            ).on_balance_volume()
-            for ts, val in series.items():
-                points.append(IndicatorDataPoint(date=ts.date(), value=clean(val)))
-
-        # ── CCI ────────────────────────────────────────────────────────────
-        elif ind == "cci":
-            series = ta.trend.CCIIndicator(
-                high=df["high"], low=df["low"], close=df["close"], window=req.period
-            ).cci()
-            for ts, val in series.items():
-                points.append(IndicatorDataPoint(date=ts.date(), value=clean(val)))
-
-        # ── VWAP ───────────────────────────────────────────────────────────
-        elif ind == "vwap":
-            series = ta.volume.VolumeWeightedAveragePrice(
-                high=df["high"], low=df["low"], close=df["close"], volume=df["volume"]
-            ).volume_weighted_average_price()
-            for ts, val in series.items():
-                points.append(IndicatorDataPoint(date=ts.date(), value=clean(val)))
-
-        # ── Stochastic ─────────────────────────────────────────────────────
-        elif ind in ("stoch", "stochastic"):
-            stoch_ind = ta.momentum.StochasticOscillator(
-                high=df["high"], low=df["low"], close=df["close"], window=req.period, smooth_window=3
-            )
-            stoch_s = stoch_ind.stoch()
-            signal_s = stoch_ind.stoch_signal()
-            for ts in stoch_s.index:
+            elif ind == "ema":
+                period = req.period
+                ema_map = {9: row.ema_9, 12: row.ema_12, 26: row.ema_26, 200: row.ema_200}
+                val = ema_map.get(period, row.ema_9)
+                points.append(IndicatorDataPoint(date=d, value=clean(val)))
+            elif ind == "sma":
+                period = req.period
+                sma_map = {5: row.sma_5, 10: row.sma_10, 20: row.sma_20, 50: row.sma_50, 200: row.sma_200}
+                val = sma_map.get(period, row.sma_20)
+                points.append(IndicatorDataPoint(date=d, value=clean(val)))
+            elif ind == "atr":
+                points.append(IndicatorDataPoint(date=d, value=clean(row.atr_14)))
+            elif ind == "obv":
+                points.append(IndicatorDataPoint(date=d, value=clean(row.obv)))
+            elif ind == "cci":
+                points.append(IndicatorDataPoint(date=d, value=clean(row.cci_20)))
+            elif ind in ("stoch", "stochastic"):
                 points.append(IndicatorDataPoint(
-                    date=ts.date(),
-                    value=clean(stoch_s[ts]),
-                    signal=clean(signal_s[ts]),
+                    date=d,
+                    value=clean(row.stoch_k),
+                    signal=clean(row.stoch_d),
                 ))
-
-        # ── ADX ────────────────────────────────────────────────────────────
-        elif ind == "adx":
-            series = ta.trend.ADXIndicator(
-                high=df["high"], low=df["low"], close=df["close"], window=req.period
-            ).adx()
-            for ts, val in series.items():
-                points.append(IndicatorDataPoint(date=ts.date(), value=clean(val)))
-
-        # ── Williams %R ────────────────────────────────────────────────────
-        elif ind in ("williams_r", "wr", "williamsR"):
-            series = ta.momentum.WilliamsRIndicator(
-                high=df["high"], low=df["low"], close=df["close"], lbp=req.period
-            ).williams_r()
-            for ts, val in series.items():
-                points.append(IndicatorDataPoint(date=ts.date(), value=clean(val)))
-
-        # ── MFI ────────────────────────────────────────────────────────────
-        elif ind == "mfi":
-            series = ta.volume.MFIIndicator(
-                high=df["high"], low=df["low"], close=df["close"],
-                volume=df["volume"], window=req.period
-            ).money_flow_index()
-            for ts, val in series.items():
-                points.append(IndicatorDataPoint(date=ts.date(), value=clean(val)))
-
-        # ── WMA (simple fallback using SMA) ────────────────────────────────
-        elif ind == "wma":
-            series = ta.trend.WMAIndicator(close=df["close"], window=req.period).wma()
-            for ts, val in series.items():
-                points.append(IndicatorDataPoint(date=ts.date(), value=clean(val)))
+            elif ind == "adx":
+                points.append(IndicatorDataPoint(date=d, value=clean(row.adx_14)))
+            elif ind in ("williams_r", "wr", "williamsR"):
+                points.append(IndicatorDataPoint(date=d, value=clean(row.williams_r)))
+            elif ind == "mfi":
+                points.append(IndicatorDataPoint(date=d, value=clean(row.mfi_14)))
+            elif ind == "vwap":
+                # vwap_pct available; actual VWAP value is in historicdata not indicators
+                points.append(IndicatorDataPoint(date=d, value=None))
+            else:
+                # Generic fallback: return None value per date
+                points.append(IndicatorDataPoint(date=d, value=None))
 
         return points
 
-    # ── Chart Drawings ───────────────────────────────────────────────────────
+    # ── Chart Drawings (local DB) ────────────────────────────────────────────
 
     @staticmethod
     async def save_drawing(
@@ -354,48 +276,3 @@ class MarketService:
         await db.delete(drawing)
         await db.commit()
         return True
-
-    # ── Data Ingestion ───────────────────────────────────────────────────────
-
-    @staticmethod
-    async def import_ohlcv_from_csv(
-        db: AsyncSession, symbol: str, csv_content: str
-    ) -> int:
-        """
-        Import OHLCV data from a CSV string.
-        Format: date,open,high,low,close,volume
-        """
-        import csv
-        import io
-        from datetime import date
-
-        f = io.StringIO(csv_content)
-        reader = csv.DictReader(f)
-        batch = []
-        rows_inserted = 0
-        symbol = symbol.upper()
-
-        for row in reader:
-            try:
-                trade_date = date.fromisoformat(row["date"].strip())
-                record = MarketDataOHLCV(
-                    symbol=symbol,
-                    trade_date=trade_date,
-                    open=float(row["open"]),
-                    high=float(row["high"]),
-                    low=float(row["low"]),
-                    close=float(row["close"]),
-                    volume=int(float(row.get("volume", 0))),
-                )
-                batch.append(record)
-                rows_inserted += 1
-            except (ValueError, KeyError):
-                continue
-
-        if batch:
-            # Upsert logic (optional, for now simple delete-insert or just insert)
-            # To keep it simple, we just add. In production, use UPSERT.
-            db.add_all(batch)
-            await db.commit()
-
-        return rows_inserted

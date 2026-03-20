@@ -14,11 +14,16 @@ class Settings(BaseSettings):
     SECURE_COOKIES: bool = False
     
     # ── LLM / AI Analysis settings ──────────────────────────────────────────
-    LLM_PROVIDER: str = "openai"        # "openai" | "anthropic"
+    LLM_PROVIDER: str = "gemini"        # "openai" | "anthropic" | "gemini"
     OPENAI_API_KEY: str = ""            # Set in .env
     ANTHROPIC_API_KEY: str = ""         # Set in .env (alternative)
-    # NEPSE historical data CSV directory (used by data import scripts)
+    GEMINI_API_KEY: str = ""            # Set in .env (alternative)
+    # NEPSE historical data CSV directory (for seed script)
     NEPSE_DATA_PATH: str = "data/nepse_ohlcv"
+
+    # ── Supabase (live NEPSE market data) ────────────────────────────────────
+    SUPABASE_URL: str = ""   # e.g. https://xxxx.supabase.co
+    SUPABASE_KEY: str = ""   # anon / service-role key
 
     
     # Account security settings

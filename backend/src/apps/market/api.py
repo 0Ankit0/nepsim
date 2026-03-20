@@ -17,8 +17,20 @@ from .schemas import (
 )
 from fastapi import UploadFile, File
 from .services import MarketService
+from .supabase_service import SupabaseMarketService
+from .supabase_schemas import (
+    HistoricDataResponse,
+    HistoricDataRow,
+    LatestQuoteResponse,
+    IndicatorsResponse,
+    IndicatorRow,
+    IndicesResponse,
+    LatestIndicesResponse,
+    AllLatestQuotesResponse,
+)
 
 router = APIRouter(prefix="/market", tags=["Market Data"])
+
 
 
 # ─── Stocks ──────────────────────────────────────────────────────────────────
@@ -110,24 +122,6 @@ async def delete_stock(
     return None
 
 
-@router.post("/stocks/{symbol}/upload", status_code=status.HTTP_200_OK)
-async def upload_market_data(
-    symbol: str,
-    file: UploadFile = File(...),
-    db: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user),
-):
-    """Admin-only: Upload historical OHLCV data for a symbol via CSV."""
-    if not current_user.is_superuser:
-        raise HTTPException(status_code=403, detail="Only superusers can upload data.")
-    
-    content = await file.read()
-    csv_text = content.decode("utf-8")
-    count = await MarketService.import_ohlcv_from_csv(db, symbol, csv_text)
-    
-    return {"message": f"Successfully imported {count} records for {symbol.upper()}."}
-
-
 # ─── OHLCV History ───────────────────────────────────────────────────────────
 
 @router.get("/stocks/{symbol}/history", response_model=HistoryResponse)
@@ -139,22 +133,33 @@ async def get_ohlcv_history(
     db: AsyncSession = Depends(get_session),
     _: User = Depends(get_current_user),
 ):
-    """Historical daily OHLCV data for chart rendering."""
+    """Historical daily OHLCV data for chart rendering (Reads from Supabase)."""
+    from datetime import datetime
     data = await MarketService.get_ohlcv(db, symbol, start_date, end_date, limit)
+    
+    points = []
+    for r in data:
+        if not r.date:
+            continue
+        try:
+            d = datetime.fromisoformat(r.date[:10]).date()
+        except ValueError:
+            continue
+        points.append(
+            OHLCVPoint(
+                date=d,
+                open=r.open or 0.0,
+                high=r.high or 0.0,
+                low=r.low or 0.0,
+                close=r.close or 0.0,
+                volume=int(r.vol) if r.vol else 0,
+                adjusted_close=None,
+            )
+        )
+
     return HistoryResponse(
         symbol=symbol.upper(),
-        data=[
-            OHLCVPoint(
-                date=r.trade_date,
-                open=r.open,
-                high=r.high,
-                low=r.low,
-                close=r.close,
-                volume=r.volume,
-                adjusted_close=r.adjusted_close,
-            )
-            for r in data
-        ],
+        data=points,
     )
 
 
@@ -230,3 +235,160 @@ async def delete_chart_drawing(
     deleted = await MarketService.delete_drawing(db, drawing_id, current_user.id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Drawing not found.")
+
+
+# ─── Live NEPSE Data (Supabase) ───────────────────────────────────────────────
+# These routes read directly from the Supabase-hosted tables that are refreshed
+# daily with real NEPSE market data.
+
+@router.get(
+    "/nepse/symbols",
+    response_model=list[str],
+    summary="List all NEPSE symbols available in Supabase",
+)
+async def list_nepse_symbols(
+    _: User = Depends(get_current_user),
+):
+    """Return a sorted list of all symbols present in the historicdata table."""
+    return await SupabaseMarketService.list_symbols()
+
+
+@router.get(
+    "/nepse/all-quotes",
+    response_model=AllLatestQuotesResponse,
+    summary="Latest quote for every NEPSE symbol (single request)",
+)
+async def get_all_nepse_quotes(
+    _: User = Depends(get_current_user),
+):
+    """
+    Returns the most recent trading day's OHLCV + market data for all symbols
+    in one Supabase query — ideal for populating a full market watchlist table.
+    """
+    rows = await SupabaseMarketService.get_all_latest_quotes()
+    latest_date = rows[0].date if rows else None
+    return AllLatestQuotesResponse(date=latest_date, count=len(rows), data=rows)
+
+
+@router.get(
+    "/nepse/{symbol}/history",
+    response_model=HistoricDataResponse,
+    summary="Historic daily OHLCV data from Supabase",
+)
+async def get_nepse_history(
+    symbol: str,
+    start_date: Optional[str] = Query(None, description="Start date YYYY-MM-DD"),
+    end_date: Optional[str] = Query(None, description="End date YYYY-MM-DD"),
+    limit: int = Query(500, ge=1, le=5000),
+    _: User = Depends(get_current_user),
+):
+    """Historical market data rows for a symbol from the Supabase historicdata table."""
+    rows = await SupabaseMarketService.get_historic_data(
+        symbol.upper(), start_date, end_date, limit
+    )
+    return HistoricDataResponse(symbol=symbol.upper(), count=len(rows), data=rows)
+
+
+@router.get(
+    "/nepse/{symbol}/quote",
+    response_model=LatestQuoteResponse,
+    summary="Latest market quote for a NEPSE symbol",
+)
+async def get_nepse_quote(
+    symbol: str,
+    _: User = Depends(get_current_user),
+):
+    """Most recent LTP, OHLCV, 52-week range, and daily change for a symbol."""
+    row = await SupabaseMarketService.get_latest_quote(symbol.upper())
+    if not row:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No data found for symbol '{symbol.upper()}' in Supabase.",
+        )
+    return LatestQuoteResponse(
+        symbol=symbol.upper(),
+        date=row.date,
+        ltp=row.ltp,
+        open=row.open,
+        high=row.high,
+        low=row.low,
+        close=row.close,
+        prev_close=row.prev_close,
+        diff=row.diff,
+        diff_pct=row.diff_pct,
+        vwap=row.vwap,
+        vol=row.vol,
+        turnover=row.turnover,
+        weeks_52_high=row.weeks_52_high,
+        weeks_52_low=row.weeks_52_low,
+    )
+
+
+@router.get(
+    "/nepse/{symbol}/indicators",
+    response_model=IndicatorsResponse,
+    summary="Pre-computed technical indicators from Supabase",
+)
+async def get_nepse_indicators(
+    symbol: str,
+    start_date: Optional[str] = Query(None, description="Start date YYYY-MM-DD"),
+    end_date: Optional[str] = Query(None, description="End date YYYY-MM-DD"),
+    limit: int = Query(500, ge=1, le=5000),
+    _: User = Depends(get_current_user),
+):
+    """All 37 pre-computed indicators (RSI, MACD, Bollinger, Ichimoku, etc.) for a symbol."""
+    rows = await SupabaseMarketService.get_indicators(
+        symbol.upper(), start_date, end_date, limit
+    )
+    return IndicatorsResponse(symbol=symbol.upper(), count=len(rows), data=rows)
+
+
+@router.get(
+    "/nepse/{symbol}/indicators/latest",
+    response_model=IndicatorRow,
+    summary="Latest indicator snapshot for a NEPSE symbol",
+)
+async def get_nepse_latest_indicators(
+    symbol: str,
+    _: User = Depends(get_current_user),
+):
+    """Most recent pre-computed indicator values for quick screening."""
+    row = await SupabaseMarketService.get_latest_indicators(symbol.upper())
+    if not row:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No indicator data found for '{symbol.upper()}' in Supabase.",
+        )
+    return row
+
+
+@router.get(
+    "/nepse/indices",
+    response_model=IndicesResponse,
+    summary="NEPSE index history from Supabase",
+)
+async def get_nepse_indices(
+    index_name: Optional[str] = Query(None, description="Filter by index name (e.g. 'NEPSE')"),
+    start_date: Optional[str] = Query(None, description="Start date YYYY-MM-DD"),
+    end_date: Optional[str] = Query(None, description="End date YYYY-MM-DD"),
+    limit: int = Query(500, ge=1, le=5000),
+    _: User = Depends(get_current_user),
+):
+    """Historical NEPSE index data. Optionally filter by index name and date range."""
+    rows = await SupabaseMarketService.get_indices(index_name, start_date, end_date, limit)
+    return IndicesResponse(count=len(rows), data=rows)
+
+
+@router.get(
+    "/nepse/indices/latest",
+    response_model=LatestIndicesResponse,
+    summary="Latest snapshot of all NEPSE indices",
+)
+async def get_nepse_latest_indices(
+    index_name: Optional[str] = Query(None, description="Filter to a single index"),
+    _: User = Depends(get_current_user),
+):
+    """Most recent row per distinct index — useful for dashboard summary cards."""
+    rows = await SupabaseMarketService.get_latest_indices(index_name)
+    return LatestIndicesResponse(data=rows)
+

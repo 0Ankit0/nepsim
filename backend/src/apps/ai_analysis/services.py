@@ -176,7 +176,25 @@ async def generate_ai_feedback(
     try:
         prompt = _build_analysis_prompt(trades, metrics, sim)
 
-        if provider == "anthropic":
+        if provider == "gemini":
+            try:
+                from google import genai as google_genai
+                from google.genai import types as genai_types
+                api_key = getattr(settings, "GEMINI_API_KEY", "")
+                client = google_genai.Client(api_key=api_key)
+                resp = await client.aio.models.generate_content(
+                    model="gemini-1.5-flash",
+                    contents=f"{SYSTEM_PROMPT}\n\n{prompt}",
+                    config=genai_types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                    ),
+                )
+                raw_json_str = resp.text
+                analysis.llm_provider = "gemini"
+            except Exception:
+                provider = "openai"  # fallback
+
+        if provider == "anthropic" and not raw_json_str:
             try:
                 import anthropic
                 api_key = getattr(settings, "ANTHROPIC_API_KEY", "")
@@ -243,7 +261,21 @@ async def generate_ai_feedback(
         if hasattr(analysis, k):
             setattr(analysis, k, v)
 
+    # ── Enrich with Supabase benchmark (best-effort) ──────────────────────────
+    try:
+        from src.apps.market.supabase_service import SupabaseMarketService
+        start_str = str(sim.period_start.date())
+        end_str = str(sim.current_sim_date.date())
+        market_return = await SupabaseMarketService.get_index_return_pct(
+            "NEPSE", start_str, end_str
+        )
+        if market_return is not None:
+            analysis.market_return_pct = market_return
+    except Exception:
+        pass  # benchmark is best-effort; never block analysis delivery
+
     db.add(analysis)
     await db.commit()
     await db.refresh(analysis)
     return analysis
+

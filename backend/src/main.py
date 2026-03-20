@@ -30,6 +30,9 @@ from src.apps.simulator.api import router as simulator_router
 from src.apps.ai_analysis.api import router as ai_analysis_router
 from src.apps.gamification.api import router as gamification_router
 from src.apps.learn.api import router as learn_router
+from src.apps.market_analysis.api import router as market_analysis_router
+from src.apps.portfolio.api import router as portfolio_router
+from src.apps.watchlist.api import router as watchlist_router
 
 # Rate limiter
 limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])
@@ -125,6 +128,9 @@ app.include_router(simulator_router, prefix=settings.API_V1_STR, tags=["Simulato
 app.include_router(ai_analysis_router, prefix=settings.API_V1_STR, tags=["AI Analysis"])
 app.include_router(gamification_router, prefix=settings.API_V1_STR, tags=["Gamification"])
 app.include_router(learn_router, prefix=settings.API_V1_STR, tags=["Learn"])
+app.include_router(market_analysis_router, prefix=settings.API_V1_STR, tags=["Market Analysis"])
+app.include_router(portfolio_router, prefix=settings.API_V1_STR, tags=["Portfolio"])
+app.include_router(watchlist_router, prefix=settings.API_V1_STR, tags=["Watchlist"])
 
 # Serve uploaded media files (avatars, etc.)
 os.makedirs(settings.MEDIA_DIR, exist_ok=True)
