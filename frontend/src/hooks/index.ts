@@ -87,11 +87,8 @@ export {
 export { useAnalytics } from './use-analytics';
 
 export {
-  useStocks,
-  useStockDetail,
   useStockHistory,
-  useIndicator,
-  useUploadMarketData,
+  useStockQuote,
 } from './use-market';
 
 export {
