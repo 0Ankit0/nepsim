@@ -60,20 +60,37 @@ class SimulatorService:
     ) -> Simulation:
         """
         Create a new simulation session.
-        Randomly selects a past 60-trading-day window from available data.
+        Randomly selects a past 60-trading-day window from Supabase historicdata.
         """
-        # Find available date range from OHLCV data
-        from sqlalchemy import func
-        from ..market.models import MarketDataOHLCV
+        from src.db.supabase import get_supabase_client
 
-        result = await db.execute(
-            select(
-                func.min(MarketDataOHLCV.trade_date),
-                func.max(MarketDataOHLCV.trade_date),
-            )
-        )
-        row = result.one()
-        min_date, max_date = row[0], row[1]
+        min_date: Optional[date] = None
+        max_date: Optional[date] = None
+
+        client = await get_supabase_client()
+        if client:
+            try:
+                # Get earliest date
+                min_res = await (
+                    client.table("historicdata")
+                    .select("date")
+                    .order("date", desc=False)
+                    .limit(1)
+                    .execute()
+                )
+                # Get latest date
+                max_res = await (
+                    client.table("historicdata")
+                    .select("date")
+                    .order("date", desc=True)
+                    .limit(1)
+                    .execute()
+                )
+                if min_res.data and max_res.data:
+                    min_date = date.fromisoformat(min_res.data[0]["date"])
+                    max_date = date.fromisoformat(max_res.data[0]["date"])
+            except Exception:
+                pass
 
         if not min_date or not max_date:
             # Fallback: use a synthetic window for development
@@ -103,6 +120,7 @@ class SimulatorService:
         await db.commit()
         await db.refresh(sim)
         return sim
+
 
     @staticmethod
     async def get_simulation(
