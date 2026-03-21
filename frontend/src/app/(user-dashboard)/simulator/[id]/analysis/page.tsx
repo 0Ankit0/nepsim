@@ -1,6 +1,6 @@
 'use client';
 
-import { useAIAnalysis, useSimulationDetail } from '@/hooks';
+import { useSimulationAnalysis, useSimulation } from '@/hooks/useSimulator';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui';
@@ -14,8 +14,8 @@ import { useState, useEffect } from 'react';
 
 export default function AIAnalysisPage({ params }: { params: { id: string } }) {
   const id = parseInt(params.id);
-  const { data: analysis, isLoading, error } = useAIAnalysis(id);
-  const { data: sim } = useSimulationDetail(id);
+  const { data: analysis, isLoading, error } = useSimulationAnalysis(id);
+  const { data: sim } = useSimulation(id);
   
   const [loadingMsgIdx, setLoadingMsgIdx] = useState(0);
   const loadingMessages = [
@@ -59,7 +59,8 @@ export default function AIAnalysisPage({ params }: { params: { id: string } }) {
     </div>
   );
 
-  const rating = analysis.overall_skill_rating || 0;
+  const scores = [analysis.timing_score, analysis.selection_score, analysis.risk_score, analysis.patience_score].filter(s => s != null) as number[];
+  const rating = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
   const ratingColor = rating >= 80 ? 'text-emerald-500' : rating >= 50 ? 'text-amber-500' : 'text-rose-500';
 
   return (
@@ -101,7 +102,7 @@ export default function AIAnalysisPage({ params }: { params: { id: string } }) {
                     </CardTitle>
                 </CardHeader>
                 <CardContent className="text-sm text-gray-600 leading-relaxed">
-                    {analysis.executive_summary}
+                    {analysis.summary_narrative || "No summary available."}
                 </CardContent>
             </Card>
         </div>
@@ -114,16 +115,18 @@ export default function AIAnalysisPage({ params }: { params: { id: string } }) {
                     What You Did Right
                 </h2>
                 <div className="grid grid-cols-1 gap-4">
-                    {analysis.what_you_did_right.map((section, idx) => (
+                    {analysis.what_you_did_right?.map((section, idx) => (
                         <Card key={idx} className="border-l-4 border-l-emerald-500 border-gray-100 hover:shadow-md transition-shadow">
                             <CardContent className="p-5">
                                 <h3 className="font-bold text-gray-900">{section.title}</h3>
-                                <p className="text-sm text-gray-500 mt-1">{section.description}</p>
-                                <div className="mt-4 flex items-center gap-2">
-                                    <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">
-                                        Impact: {section.impact_on_pnl}
-                                    </span>
-                                </div>
+                                <p className="text-sm text-gray-500 mt-1">{section.detail}</p>
+                                {section.impact_pct != null && (
+                                    <div className="mt-4 flex items-center gap-2">
+                                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">
+                                            Est. Impact: +{section.impact_pct}%
+                                        </span>
+                                    </div>
+                                )}
                             </CardContent>
                         </Card>
                     ))}
@@ -136,16 +139,18 @@ export default function AIAnalysisPage({ params }: { params: { id: string } }) {
                     Areas for Improvement
                 </h2>
                 <div className="grid grid-cols-1 gap-4">
-                    {analysis.what_you_did_wrong.map((section, idx) => (
+                    {analysis.what_you_did_wrong?.map((section, idx) => (
                         <Card key={idx} className="border-l-4 border-l-rose-500 border-gray-100 hover:shadow-md transition-shadow">
                             <CardContent className="p-5">
                                 <h3 className="font-bold text-gray-900">{section.title}</h3>
-                                <p className="text-sm text-gray-500 mt-1">{section.description}</p>
-                                <div className="mt-4 flex items-center gap-2">
-                                    <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded">
-                                        Impact: {section.impact_on_pnl}
-                                    </span>
-                                </div>
+                                <p className="text-sm text-gray-500 mt-1">{section.detail}</p>
+                                {section.impact_pct != null && (
+                                    <div className="mt-4 flex items-center gap-2">
+                                        <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded">
+                                            Est. Impact: {section.impact_pct}%
+                                        </span>
+                                    </div>
+                                )}
                             </CardContent>
                         </Card>
                     ))}
@@ -158,11 +163,11 @@ export default function AIAnalysisPage({ params }: { params: { id: string } }) {
                     Strategic Alternatives
                 </h2>
                 <div className="grid grid-cols-1 gap-4">
-                    {analysis.what_you_could_have_done.map((section, idx) => (
+                    {analysis.what_you_could_have_done?.map((section, idx) => (
                         <Card key={idx} className="border-l-4 border-l-indigo-500 border-gray-100 bg-gray-50/30">
                             <CardContent className="p-5">
                                 <h3 className="font-bold text-gray-900">{section.title}</h3>
-                                <p className="text-sm text-gray-500 mt-1">{section.description}</p>
+                                <p className="text-sm text-gray-500 mt-1">{section.detail}</p>
                             </CardContent>
                         </Card>
                     ))}
@@ -175,30 +180,30 @@ export default function AIAnalysisPage({ params }: { params: { id: string } }) {
                     Trade-by-Trade Commentary
                 </h2>
                 <div className="space-y-4">
-                    {analysis.trade_by_trade_commentary.map((comm, idx) => (
+                    {analysis.trade_by_trade_commentary?.map((comm, idx) => (
                         <div key={idx} className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm">
                             <div className="flex justify-between items-start mb-4">
                                 <div>
                                     <h4 className="font-bold text-gray-900 flex items-center gap-2">
                                         {comm.symbol} 
-                                        <span className={`text-[10px] uppercase px-1.5 py-0.5 rounded ${comm.action === 'buy' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
-                                            {comm.action}
+                                        <span className={`text-[10px] uppercase px-1.5 py-0.5 rounded ${comm.side === 'buy' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                                            {comm.side}
                                         </span>
                                     </h4>
-                                    <p className="text-xs text-gray-400 mt-0.5">Price: Rs. {comm.price}</p>
+                                    <p className="text-xs text-gray-400 mt-0.5">Date: {new Date(comm.sim_date).toLocaleDateString()}</p>
                                 </div>
+                                {comm.quality_score != null && (
+                                    <div className="text-right">
+                                        <div className="text-xs font-bold text-gray-400">Quality Score</div>
+                                        <div className="text-lg font-black text-indigo-600">{comm.quality_score}/100</div>
+                                    </div>
+                                )}
                             </div>
                             <div className="bg-gray-50 rounded-lg p-4 relative">
                                 <div className="absolute -left-2 top-4 w-4 h-4 bg-gray-50 rotate-45" />
                                 <p className="text-sm text-gray-700 leading-relaxed italic">
-                                    "{comm.ai_comment}"
+                                    "{comm.commentary}"
                                 </p>
-                                {comm.alternative_action && (
-                                    <div className="mt-3 pt-3 border-t border-gray-200/50">
-                                        <p className="text-[10px] font-bold text-indigo-600 uppercase">Pro Tip:</p>
-                                        <p className="text-xs text-gray-500 mt-1">{comm.alternative_action}</p>
-                                    </div>
-                                )}
                             </div>
                         </div>
                     ))}

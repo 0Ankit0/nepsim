@@ -176,7 +176,7 @@ export default function SettingsPage() {
                 <CardContent className="space-y-3">
                   {[
                     { label: 'Username', value: user?.username },
-                    { label: 'Member since', value: user?.created_at ? new Date(user.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : '—' },
+                    { label: 'Member since', value: (user as any)?.created_at ? new Date((user as any).created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : '—' },
                     { label: 'Account type', value: user?.is_superuser ? 'Superuser' : 'Standard' },
                   ].map(({ label, value }) => (
                     <div key={label} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">

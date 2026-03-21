@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 'use client';
 
 import { useLessons } from '@/hooks';

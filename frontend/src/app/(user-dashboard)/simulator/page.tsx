@@ -1,41 +1,29 @@
 'use client';
 
 import { useState } from 'react';
-import { useSimulations, useDeleteSimulation } from '@/hooks';
+import { useSimulations, useCreateSimulation } from '@/hooks/useSimulator';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui';
 import { 
-  Activity, Play, Plus, Clock, TrendingUp, 
-  Trash2, ArrowRight, Wallet, History, AlertCircle 
+  Activity, Plus, Clock, History, AlertCircle, ArrowRight 
 } from 'lucide-react';
 import Link from 'next/link';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiClient } from '@/lib/api-client';
 
 export default function SimulatorPage() {
   const [initialCapital, setInitialCapital] = useState('1000000');
-  const { data: simulations, isLoading } = useSimulations({ limit: 20 });
-  const queryClient = useQueryClient();
+  const { data: simulations, isLoading } = useSimulations();
   
-  const startSimulation = useMutation({
-    mutationFn: async (capital: number) => {
-        const response = await apiClient.post('/simulator/simulations/', { initial_capital: capital });
-        return response.data;
-    },
-    onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ['simulations'] });
-    }
-  });
+  const createSimulation = useCreateSimulation();
 
-  const activeSimulations = (simulations ?? []).filter(s => s.status === 'active');
-  const pastSimulations = (simulations ?? []).filter(s => s.status !== 'active');
+  const activeSimulations = (simulations ?? []).filter(s => s.status === 'active' || s.status === 'paused');
+  const pastSimulations = (simulations ?? []).filter(s => s.status === 'ended' || s.status === 'analysing');
 
   const handleStart = () => {
     const capital = parseInt(initialCapital);
     if (isNaN(capital) || capital < 10000) return;
-    startSimulation.mutate(capital);
+    createSimulation.mutate({ capital, name: `Sim - ${new Date().toLocaleDateString()}` });
   };
 
   return (
@@ -44,13 +32,13 @@ export default function SimulatorPage() {
         <h1 className="text-3xl font-bold text-gray-900">Trading Simulator</h1>
         <p className="text-gray-500 max-w-2xl mx-auto">
           Practice your trading strategies in a risk-free environment using historical NEPSE data. 
-          Get AI insights on your performance and improve your decision making.
+          Get AI insights on your performance.
         </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Start New Simulation */}
-        <Card className="lg:col-span-1 border-indigo-100 shadow-sm">
+        <Card className="lg:col-span-1 border-indigo-100 shadow-sm h-fit">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Plus className="h-5 w-5 text-indigo-600" />
@@ -75,17 +63,17 @@ export default function SimulatorPage() {
             
             <Button 
                 onClick={handleStart} 
-                disabled={startSimulation.isPending || activeSimulations.length >= 3}
+                disabled={createSimulation.isPending || activeSimulations.length >= 3}
                 className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-6"
             >
-                {startSimulation.isPending ? 'Starting...' : 'Start Simulation'}
+                {createSimulation.isPending ? 'Starting...' : 'Start Simulation'}
             </Button>
             
             {activeSimulations.length >= 3 && (
                 <div className="p-3 bg-amber-50 rounded-lg border border-amber-100 flex gap-2">
                     <AlertCircle className="h-4 w-4 text-amber-600 flex-shrink-0 mt-0.5" />
                     <p className="text-xs text-amber-800">
-                        You have reached the maximum number of active simulations. Finish or delete one to start a new one.
+                        Maximum 3 active simulations allowed. Finish one to start a new one.
                     </p>
                 </div>
             )}
@@ -115,24 +103,20 @@ export default function SimulatorPage() {
                                         <Activity className="h-5 w-5 text-emerald-600" />
                                     </div>
                                     <span className="bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
-                                        Active
+                                        {sim.status}
                                     </span>
                                 </div>
                                 <div className="space-y-4">
-                                    <div>
-                                        <p className="text-xs text-gray-500">Current Balance</p>
-                                        <p className="text-xl font-bold text-gray-900">Rs. {sim.current_balance.toLocaleString()}</p>
-                                    </div>
                                     <div className="flex justify-between items-center bg-gray-50 p-2 rounded-lg">
                                         <div className="text-center flex-1 border-r border-gray-200">
                                             <p className="text-[10px] text-gray-500 uppercase">P&L</p>
-                                            <p className={`text-sm font-bold ${sim.total_pnl_pct >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                                {sim.total_pnl_pct >= 0 ? '+' : ''}{sim.total_pnl_pct.toFixed(2)}%
+                                            <p className={`text-sm font-bold ${(sim.total_pnl_pct ?? 0) >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                {(sim.total_pnl_pct ?? 0) >= 0 ? '+' : ''}{(sim.total_pnl_pct ?? 0).toFixed(2)}%
                                             </p>
                                         </div>
                                         <div className="text-center flex-1">
-                                            <p className="text-[10px] text-gray-500 uppercase">Day</p>
-                                            <p className="text-sm font-bold text-gray-900">14</p>
+                                            <p className="text-[10px] text-gray-500 uppercase">Started</p>
+                                            <p className="text-xs font-bold text-gray-900">{new Date(sim.started_at).toLocaleDateString()}</p>
                                         </div>
                                     </div>
                                     <Link href={`/simulator/${sim.id}`}>
@@ -178,12 +162,12 @@ export default function SimulatorPage() {
                                             <span className="text-[10px] font-bold uppercase text-gray-500">{sim.status}</span>
                                         </td>
                                         <td className="px-4 py-3 text-right">
-                                            <span className={`font-bold ${sim.total_pnl_pct >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                                {sim.total_pnl_pct >= 0 ? '+' : ''}{sim.total_pnl_pct.toFixed(2)}%
+                                            <span className={`font-bold ${(sim.total_pnl_pct ?? 0) >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                {(sim.total_pnl_pct ?? 0) >= 0 ? '+' : ''}{(sim.total_pnl_pct ?? 0).toFixed(2)}%
                                             </span>
                                         </td>
                                         <td className="px-4 py-3 text-gray-500 text-xs">
-                                            {new Date(sim.created_at).toLocaleDateString()}
+                                            {new Date(sim.started_at).toLocaleDateString()}
                                         </td>
                                         <td className="px-4 py-3 text-center">
                                             <Link href={`/simulator/${sim.id}`}>

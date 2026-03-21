@@ -14,12 +14,20 @@ import {
   TrendingUp,
   Activity,
   GraduationCap,
+  Briefcase,
+  Bookmark,
+  BarChart3,
+  ScanSearch,
 } from 'lucide-react';
 import { OrgSwitcher } from './org-switcher';
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: Home },
   { name: 'Market', href: '/market', icon: TrendingUp },
+  { name: 'Portfolio', href: '/portfolio', icon: Briefcase },
+  { name: 'Watchlist', href: '/watchlist', icon: Bookmark },
+  { name: 'Analysis', href: '/analysis', icon: BarChart3 },
+  { name: '360° View', href: '/stock360', icon: ScanSearch },
   { name: 'Simulator', href: '/simulator', icon: Activity },
   { name: 'Learn', href: '/learn', icon: GraduationCap },
   { name: 'Profile', href: '/profile', icon: User },

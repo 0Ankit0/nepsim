@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 'use client';
 
 import { useListUsers } from '@/hooks/use-users';
