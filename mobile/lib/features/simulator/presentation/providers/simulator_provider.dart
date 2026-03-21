@@ -1,32 +1,38 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../data/models/simulation.dart';
-import '../../data/repositories/simulator_repository.dart';
+// Re-export data layer providers so pages importing this file get access to
+// simulatorRepositoryProvider, simulationsProvider, simulationProvider, analysisProvider.
+export '../../data/providers/simulator_provider.dart';
 
-final simulatorListProvider = AsyncNotifierProvider<SimulatorListNotifier, List<Simulation>>(
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../data/providers/simulator_provider.dart';
+import '../../data/models/simulator_models.dart';
+
+/// Notifier-backed list provider: exposes [startSimulation] and [advanceDay].
+final simulatorListProvider = AsyncNotifierProvider<SimulatorListNotifier, List<SimulationSummary>>(
   SimulatorListNotifier.new,
 );
 
-class SimulatorListNotifier extends AsyncNotifier<List<Simulation>> {
+class SimulatorListNotifier extends AsyncNotifier<List<SimulationSummary>> {
   @override
-  Future<List<Simulation>> build() async {
+  Future<List<SimulationSummary>> build() async {
     return ref.watch(simulatorRepositoryProvider).listSimulations();
   }
 
-  Future<Simulation> startSimulation(double initialCapital) async {
-    final repository = ref.read(simulatorRepositoryProvider);
-    final newSimulation = await repository.createSimulation(initialCapital);
+  Future<SimulationResponse> startSimulation(double initialCapital, {String? name}) async {
+    final repo = ref.read(simulatorRepositoryProvider);
+    final sim = await repo.createSimulation(initialCapital, name: name);
     ref.invalidateSelf();
-    return newSimulation;
+    return sim;
   }
 
-  Future<Simulation> advanceDay(int simulationId) async {
-    final repository = ref.read(simulatorRepositoryProvider);
-    final updatedSimulation = await repository.advanceDay(simulationId);
+  Future<SimulationResponse> advanceDay(int simulationId) async {
+    final repo = ref.read(simulatorRepositoryProvider);
+    final updated = await repo.advanceDay(simulationId);
     ref.invalidate(simulationDetailProvider(simulationId));
-    return updatedSimulation;
+    return updated;
   }
 }
 
-final simulationDetailProvider = FutureProvider.family.autoDispose<Simulation, int>((ref, id) async {
+/// Detail provider — pages watch this; invalidated by [SimulatorListNotifier.advanceDay].
+final simulationDetailProvider = FutureProvider.family.autoDispose<SimulationResponse, int>((ref, id) async {
   return ref.watch(simulatorRepositoryProvider).getSimulation(id);
 });

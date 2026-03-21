@@ -46,14 +46,14 @@ class ApiEndpoints {
   // NEPSIM Domain Endpoints
   // ---------------------------------------------------------------------------
 
-  // Market
-  static const String stocks = '/market/stocks';
-  static String stockDetail(String symbol) => '/market/stocks/$symbol';
-  static String stockHistory(String symbol) => '/market/stocks/$symbol/history';
-  static String stockIndicators(String symbol) => '/market/stocks/$symbol/indicators';
-  static const String chartDrawings = '/market/chart-drawings';
-  static String stockChartDrawings(String symbol) => '/market/chart-drawings/$symbol';
-  static String deleteChartDrawing(String id) => '/market/chart-drawings/$id';
+  // Market (NEPSE)
+  static const String symbols = '/market/nepse/symbols';
+  static String quote(String symbol) => '/market/nepse/$symbol/quote';
+  static String history(String symbol) => '/market/nepse/$symbol/history';
+  static String indicators(String symbol) => '/market/nepse/$symbol/indicators';
+  static String latestIndicators(String symbol) => '/market/nepse/$symbol/indicators/latest';
+  static const String indices = '/market/nepse/indices';
+  static const String latestIndices = '/market/nepse/indices/latest';
 
   // Simulator
   static const String simulations = '/simulations/';
@@ -68,6 +68,11 @@ class ApiEndpoints {
   static String retrySimulationAnalysis(int id) => '/simulations/$id/analysis/retry';
   static const String aiInsights = '/learn/ai-insights';
 
+  // Chart Drawings
+  static const String chartDrawings = '/market/chart-drawings';
+  static String chartDrawingsBySymbol(String symbol) => '/market/chart-drawings/$symbol';
+  static String deleteChartDrawing(int id) => '/market/chart-drawings/$id';
+
   // Learn
   static const String lessons = '/learn/lessons';
   static String lessonDetail(int id) => '/learn/lessons/$id';
@@ -77,4 +82,24 @@ class ApiEndpoints {
   // Gamification (Progress)
   static const String userProgress = '/users/me/progress';
   static const String userAchievements = '/users/me/achievements';
+
+  // Portfolio
+  static const String portfolio = '/portfolio/';
+  static String portfolioDetail(int id) => '/portfolio/$id';
+  static const String portfolioAnalyzeAll = '/portfolio/analyze-all';
+  static const String portfolioAlerts = '/portfolio/alerts';
+  static String portfolioAlertRead(int id) => '/portfolio/alerts/$id/read';
+
+  // Watchlist
+  static const String watchlist = '/watchlist/';
+  static String watchlistDetail(int id) => '/watchlist/$id';
+  static const String watchlistCheckSignals = '/watchlist/check-signals';
+  static const String watchlistAlerts = '/watchlist/alerts';
+  static String watchlistAlertRead(int id) => '/watchlist/alerts/$id/read';
+
+  // Market Analysis
+  static const String marketAnalysisTopStocks = '/market-analysis/top-stocks';
+  static const String marketAnalysisOverview = '/market-analysis/market-overview';
+  static String marketAnalysisSymbol(String symbol) => '/market-analysis/$symbol';
+  static String marketAnalysis360(String symbol) => '/market-analysis/360/$symbol';
 }

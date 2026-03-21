@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../market/data/models/stock.dart';
 import '../providers/simulator_provider.dart';
-import '../../data/repositories/simulator_repository.dart';
+import '../../data/models/simulator_models.dart';
 
 class TradeDialog extends ConsumerStatefulWidget {
   final int simulationId;
@@ -36,13 +36,14 @@ class _TradeDialogState extends ConsumerState<TradeDialog> {
 
     setState(() => _isLoading = true);
     try {
-      // NOTE: executeTrade doesn't exist on SimulatorListProvider yet, we will call repository directly or create provider method
       final repository = ref.read(simulatorRepositoryProvider);
       await repository.executeTrade(
         widget.simulationId,
-        widget.stock.symbol,
-        widget.side,
-        qty,
+        TradeRequest(
+          symbol: widget.stock.symbol,
+          side: widget.side,
+          quantity: qty,
+        ),
       );
       // Invalidate simulation details so it fetches the new balance
       ref.invalidate(simulationDetailProvider(widget.simulationId));

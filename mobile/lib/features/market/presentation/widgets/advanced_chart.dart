@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
-import '../models/market_data.dart';
+import '../../data/models/market_models.dart';
 import '../providers/chart_provider.dart';
 
 class AdvancedChart extends ConsumerStatefulWidget {
-  final List<MarketDataPoint> data;
+  final List<HistoricDataRow> data;
   final String symbol;
 
   const AdvancedChart({super.key, required this.data, required this.symbol});
@@ -29,11 +29,8 @@ class _AdvancedChartState extends ConsumerState<AdvancedChart> {
         Expanded(
           child: SfCartesianChart(
             plotAreaBorderWidth: 0,
-            onTap: (ChartTapArgs args) {
-              if (_isDrawingMode && args.value != null) {
-                ref.read(chartDrawingsProvider(widget.symbol).notifier).addHorizontalLine(args.value!.toDouble());
-                setState(() => _isDrawingMode = false);
-              }
+            onChartTouchInteractionDown: (ChartTouchInteractionArgs args) {
+              // Drawing mode via touch is not supported in this version; kept for future use
             },
             trackballBehavior: TrackballBehavior(
               enable: !_isDrawingMode,
@@ -82,87 +79,86 @@ class _AdvancedChartState extends ConsumerState<AdvancedChart> {
             ],
             indicators: [
               if (indicators.contains('sma50'))
-                SmaIndicator<MarketDataPoint, DateTime>(
+                SmaIndicator<HistoricDataRow, DateTime>(
                   period: 50,
                   dataSource: widget.data,
-                  xValueMapper: (MarketDataPoint data, _) => data.date,
-                  closeValueMapper: (MarketDataPoint data, _) => data.close,
-                  valueLineColor: Colors.blue,
+                  xValueMapper: (HistoricDataRow d, _) => DateTime.parse(d.date),
+                  closeValueMapper: (HistoricDataRow d, _) => d.close ?? 0,
+                  signalLineColor: Colors.blue,
                 ),
               if (indicators.contains('sma200'))
-                SmaIndicator<MarketDataPoint, DateTime>(
+                SmaIndicator<HistoricDataRow, DateTime>(
                   period: 200,
                   dataSource: widget.data,
-                  xValueMapper: (MarketDataPoint data, _) => data.date,
-                  closeValueMapper: (MarketDataPoint data, _) => data.close,
-                  valueLineColor: Colors.red,
+                  xValueMapper: (HistoricDataRow d, _) => DateTime.parse(d.date),
+                  closeValueMapper: (HistoricDataRow d, _) => d.close ?? 0,
+                  signalLineColor: Colors.red,
                 ),
               if (indicators.contains('boll'))
-                BollingerIndicator<MarketDataPoint, DateTime>(
+                BollingerBandIndicator<HistoricDataRow, DateTime>(
                   period: 20,
                   dataSource: widget.data,
-                  xValueMapper: (MarketDataPoint data, _) => data.date,
-                  closeValueMapper: (MarketDataPoint data, _) => data.close,
-                  upperLineColor: Colors.orange.withOpacity(0.5),
-                  lowerLineColor: Colors.orange.withOpacity(0.5),
+                  xValueMapper: (HistoricDataRow d, _) => DateTime.parse(d.date),
+                  closeValueMapper: (HistoricDataRow d, _) => d.close ?? 0,
+                  upperLineColor: Colors.orange.withValues(alpha: 0.5),
+                  lowerLineColor: Colors.orange.withValues(alpha: 0.5),
                 ),
               if (indicators.contains('rsi'))
-                RsiIndicator<MarketDataPoint, DateTime>(
+                RsiIndicator<HistoricDataRow, DateTime>(
                   period: 14,
                   dataSource: widget.data,
-                  xValueMapper: (MarketDataPoint data, _) => data.date,
-                  closeValueMapper: (MarketDataPoint data, _) => data.close,
+                  xValueMapper: (HistoricDataRow d, _) => DateTime.parse(d.date),
+                  closeValueMapper: (HistoricDataRow d, _) => d.close ?? 0,
                   yAxisName: 'secondaryYAxis',
                   overbought: 70,
                   oversold: 30,
                 ),
               if (indicators.contains('macd'))
-                MacdIndicator<MarketDataPoint, DateTime>(
+                MacdIndicator<HistoricDataRow, DateTime>(
                   shortPeriod: 12,
                   longPeriod: 26,
-                  signalPeriod: 9,
                   dataSource: widget.data,
-                  xValueMapper: (MarketDataPoint data, _) => data.date,
-                  closeValueMapper: (MarketDataPoint data, _) => data.close,
+                  xValueMapper: (HistoricDataRow d, _) => DateTime.parse(d.date),
+                  closeValueMapper: (HistoricDataRow d, _) => d.close ?? 0,
                   yAxisName: 'secondaryYAxis',
                 ),
             ],
-            series: <CartesianSeries<MarketDataPoint, DateTime>>[
+            series: <CartesianSeries<HistoricDataRow, DateTime>>[
               if (chartType == 'candle')
-                CandleSeries<MarketDataPoint, DateTime>(
+                CandleSeries<HistoricDataRow, DateTime>(
                   dataSource: widget.data,
-                  xValueMapper: (MarketDataPoint data, _) => data.date,
-                  lowValueMapper: (MarketDataPoint data, _) => data.low,
-                  highValueMapper: (MarketDataPoint data, _) => data.high,
-                  openValueMapper: (MarketDataPoint data, _) => data.open,
-                  closeValueMapper: (MarketDataPoint data, _) => data.close,
+                  xValueMapper: (HistoricDataRow d, _) => DateTime.parse(d.date),
+                  lowValueMapper: (HistoricDataRow d, _) => d.low ?? 0,
+                  highValueMapper: (HistoricDataRow d, _) => d.high ?? 0,
+                  openValueMapper: (HistoricDataRow d, _) => d.open ?? 0,
+                  closeValueMapper: (HistoricDataRow d, _) => d.close ?? 0,
                   enableSolidCandles: true,
                 )
               else if (chartType == 'line')
-                LineSeries<MarketDataPoint, DateTime>(
+                LineSeries<HistoricDataRow, DateTime>(
                   dataSource: widget.data,
-                  xValueMapper: (MarketDataPoint data, _) => data.date,
-                  yValueMapper: (MarketDataPoint data, _) => data.close,
+                  xValueMapper: (HistoricDataRow d, _) => DateTime.parse(d.date),
+                  yValueMapper: (HistoricDataRow d, _) => d.close ?? 0,
                 )
               else if (chartType == 'area')
-                AreaSeries<MarketDataPoint, DateTime>(
+                AreaSeries<HistoricDataRow, DateTime>(
                   dataSource: widget.data,
-                  xValueMapper: (MarketDataPoint data, _) => data.date,
-                  yValueMapper: (MarketDataPoint data, _) => data.close,
+                  xValueMapper: (HistoricDataRow d, _) => DateTime.parse(d.date),
+                  yValueMapper: (HistoricDataRow d, _) => d.close ?? 0,
                   gradient: LinearGradient(
-                    colors: [Colors.blue.withOpacity(0.5), Colors.blue.withOpacity(0.0)],
+                    colors: [Colors.blue.withValues(alpha: 0.5), Colors.blue.withValues(alpha: 0.0)],
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                   ),
                 )
               else if (chartType == 'hloc')
-                HiloOpenCloseSeries<MarketDataPoint, DateTime>(
+                HiloOpenCloseSeries<HistoricDataRow, DateTime>(
                   dataSource: widget.data,
-                  xValueMapper: (MarketDataPoint data, _) => data.date,
-                  lowValueMapper: (MarketDataPoint data, _) => data.low,
-                  highValueMapper: (MarketDataPoint data, _) => data.high,
-                  openValueMapper: (MarketDataPoint data, _) => data.open,
-                  closeValueMapper: (MarketDataPoint data, _) => data.close,
+                  xValueMapper: (HistoricDataRow d, _) => DateTime.parse(d.date),
+                  lowValueMapper: (HistoricDataRow d, _) => d.low ?? 0,
+                  highValueMapper: (HistoricDataRow d, _) => d.high ?? 0,
+                  openValueMapper: (HistoricDataRow d, _) => d.open ?? 0,
+                  closeValueMapper: (HistoricDataRow d, _) => d.close ?? 0,
                 ),
             ],
           ),
@@ -177,7 +173,7 @@ class _AdvancedChartState extends ConsumerState<AdvancedChart> {
       height: 48,
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
-        border: Border(bottom: BorderSide(color: Colors.grey.withOpacity(0.2))),
+        border: Border(bottom: BorderSide(color: Colors.grey.withValues(alpha: 0.2))),
       ),
       child: ListView(
         scrollDirection: Axis.horizontal,
@@ -193,7 +189,7 @@ class _AdvancedChartState extends ConsumerState<AdvancedChart> {
               );
             }).toList(),
             onChanged: (v) {
-              if (v != null) ref.read(chartTypeProvider.notifier).state = v;
+              if (v != null) ref.read(chartTypeProvider.notifier).set(v);
             },
           ),
           const VerticalDivider(width: 24),
@@ -210,14 +206,10 @@ class _AdvancedChartState extends ConsumerState<AdvancedChart> {
   }
 
   void _toggleIndicator(String id, bool enabled) {
-    final current = ref.read(selectedIndicatorsProvider);
-    final next = Set<String>.from(current);
-    if (enabled) {
-      next.add(id);
-    } else {
-      next.remove(id);
+    final notifier = ref.read(selectedIndicatorsProvider.notifier);
+    if (enabled != ref.read(selectedIndicatorsProvider).contains(id)) {
+      notifier.toggle(id);
     }
-    ref.read(selectedIndicatorsProvider.notifier).state = next;
   }
 
   Widget _buildDrawingButton() {

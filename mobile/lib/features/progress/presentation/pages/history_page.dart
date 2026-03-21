@@ -53,8 +53,8 @@ class HistoryPage extends ConsumerWidget {
             itemCount: completedSims.length,
             itemBuilder: (context, index) {
               final sim = completedSims[index];
-              final date = DateFormat.yMMMd().format(sim.currentSimDate);
-              final bool isProfit = (sim.totalPnlPct ?? 0) >= 0;
+              final date = DateFormat.yMMMd().format(DateTime.parse(sim.ended_at ?? sim.started_at));
+              final bool isProfit = (sim.total_pnl_pct ?? 0) >= 0;
 
               return Card(
                 margin: const EdgeInsets.only(bottom: 12),
@@ -72,7 +72,7 @@ class HistoryPage extends ConsumerWidget {
                       Text('Completed on $date'),
                       const SizedBox(height: 4),
                       Text(
-                        'P&L: ${sim.totalPnlPct?.toStringAsFixed(2) ?? '0.00'}%',
+                        'P&L: ${sim.total_pnl_pct?.toStringAsFixed(2) ?? '0.00'}%',
                         style: TextStyle(
                           color: isProfit ? Colors.green[700] : Colors.red[700],
                           fontWeight: FontWeight.w600,

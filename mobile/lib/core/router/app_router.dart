@@ -25,6 +25,11 @@ import '../../features/analysis/presentation/pages/analysis_loading_page.dart';
 import '../../features/analysis/presentation/pages/analysis_results_page.dart';
 import '../../features/analysis/presentation/pages/trade_timeline_page.dart';
 import '../../features/progress/presentation/pages/achievements_page.dart';
+import '../../features/portfolio/presentation/pages/portfolio_page.dart' as user_pf;
+import '../../features/watchlist/presentation/pages/watchlist_page.dart';
+import '../../features/market_analysis/presentation/pages/market_analysis_page.dart';
+import '../../features/market_analysis/presentation/pages/symbol_analysis_page.dart';
+import '../../features/market_analysis/presentation/pages/stock_360_page.dart';
 import '../constants/app_constants.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
@@ -145,6 +150,24 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               ),
             ],
           ),
+          // Branch 3: My Portfolio (real user portfolio)
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: AppConstants.userPortfolioRoute,
+                builder: (context, state) => const user_pf.UserPortfolioPage(),
+              ),
+            ],
+          ),
+          // Branch 4: Market Analysis & Insights
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: AppConstants.marketAnalysisRoute,
+                builder: (context, state) => const MarketAnalysisPage(),
+              ),
+            ],
+          ),
         ],
       ),
       // Secondary routes outside bottom nav
@@ -207,6 +230,21 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           final id = int.tryParse(state.uri.queryParameters['id'] ?? '') ?? 0;
           return TradeTimelinePage(simulationId: id);
         },
+      ),
+      GoRoute(
+        path: AppConstants.watchlistRoute,
+        builder: (context, state) => const WatchlistPage(),
+      ),
+      GoRoute(
+        path: AppConstants.marketAnalysisDetailRoute,
+        builder: (context, state) {
+          final symbol = state.uri.queryParameters['symbol'] ?? '';
+          return SymbolAnalysisPage(symbol: symbol);
+        },
+      ),
+      GoRoute(
+        path: '/stock-360',
+        builder: (context, state) => const Stock360Page(),
       ),
     ],
   );

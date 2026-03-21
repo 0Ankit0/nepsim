@@ -152,7 +152,7 @@ class _StartSimulationPageState extends ConsumerState<StartSimulationPage> {
                       child: ListTile(
                         leading: const Icon(Icons.play_circle_fill, color: Colors.green),
                         title: Text('Simulation #${sim.id}'),
-                        subtitle: Text('Capital: Rs. ${sim.initialCapital}'),
+                        subtitle: Text('Capital: Rs. ${sim.initial_capital}'),
                         trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                         onTap: () {
                           context.go('${AppConstants.tradingRoute}?id=${sim.id}');

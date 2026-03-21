@@ -19,7 +19,7 @@ class PortfolioPage extends ConsumerWidget {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (err, stack) => Center(child: Text('Error: $err')),
         data: (sim) {
-          final holdings = sim.holdings;
+          final holdings = sim.holdings ?? [];
           if (holdings.isEmpty) {
             return const Center(
               child: Padding(
@@ -32,13 +32,13 @@ class PortfolioPage extends ConsumerWidget {
           return ListView.separated(
             padding: const EdgeInsets.all(16),
             itemCount: holdings.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 12),
+            separatorBuilder: (_, _) => const SizedBox(height: 12),
             itemBuilder: (context, index) {
               final holding = holdings[index];
               if (holding.quantity == 0) return const SizedBox.shrink(); // Hide zero quantity
               
-              final currentVal = holding.quantity * (holding.currentPrice ?? 0.0);
-              final costBasis = holding.quantity * holding.averageBuyPrice;
+              final currentVal = holding.quantity * (holding.current_price ?? 0.0);
+              final costBasis = holding.quantity * holding.average_buy_price;
               final pnl = currentVal - costBasis;
               final pnlPct = costBasis > 0 ? (pnl / costBasis) * 100 : 0.0;
               final isPositive = pnl >= 0;
@@ -67,7 +67,7 @@ class PortfolioPage extends ConsumerWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text('Shares: ${holding.quantity}', style: TextStyle(color: Colors.grey[700])),
-                              Text('Avg Price: Rs. ${holding.averageBuyPrice.toStringAsFixed(2)}', style: TextStyle(color: Colors.grey[700])),
+                              Text('Avg Price: Rs. ${holding.average_buy_price.toStringAsFixed(2)}', style: TextStyle(color: Colors.grey[700])),
                             ],
                           ),
                           Column(

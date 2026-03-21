@@ -338,9 +338,9 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                           width: 104,
                           height: 104,
                           fit: BoxFit.cover,
-                          placeholder: (_, __) =>
+                          placeholder: (_, _) =>
                               const CircularProgressIndicator(),
-                          errorWidget: (_, __, ___) => Text(
+                          errorWidget: (_, _, _) => Text(
                             user.initials,
                             style: Theme.of(context)
                                 .textTheme

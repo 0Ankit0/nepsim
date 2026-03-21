@@ -292,7 +292,7 @@ class _PaymentForm extends ConsumerWidget {
                   }).toList(),
                 ),
                 loading: () => const CircularProgressIndicator.adaptive(),
-                error: (_, __) => const Text('Failed to load providers'),
+                error: (_, _) => const Text('Failed to load providers'),
               ),
 
               // Sandbox test credential hint

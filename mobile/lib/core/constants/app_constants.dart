@@ -40,4 +40,10 @@ class AppConstants {
 
   // Social auth — the backend redirects here after OAuth; the WebView intercepts it
   static const String socialAuthCallbackPrefix = '/auth-callback';
+
+  // New feature routes
+  static const String userPortfolioRoute = '/user-portfolio';
+  static const String watchlistRoute = '/watchlist';
+  static const String marketAnalysisRoute = '/market-analysis';
+  static const String marketAnalysisDetailRoute = '/market-analysis/detail';
 }

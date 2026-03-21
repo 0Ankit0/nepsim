@@ -104,6 +104,7 @@ class _QuizPageState extends ConsumerState<QuizPage> {
       // Invalidate progress to refresh curriculum view
       ref.invalidate(quizProgressProvider);
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Submission failed: $e')),
       );

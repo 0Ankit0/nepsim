@@ -25,6 +25,14 @@ class HomePage extends ConsumerWidget {
         icon: Icon(Icons.history_outlined),
         selectedIcon: Icon(Icons.history),
         label: 'My History'),
+    NavigationDestination(
+        icon: Icon(Icons.account_balance_wallet_outlined),
+        selectedIcon: Icon(Icons.account_balance_wallet),
+        label: 'Portfolio'),
+    NavigationDestination(
+        icon: Icon(Icons.insights_outlined),
+        selectedIcon: Icon(Icons.insights),
+        label: 'Insights'),
   ];
 
   void _onDestinationSelected(int index) {

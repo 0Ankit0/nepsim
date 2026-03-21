@@ -188,7 +188,7 @@ class _SocialLoginSection extends ConsumerWidget {
 
     return providersAsync.when(
       loading: () => const SizedBox.shrink(),
-      error: (_, __) => const SizedBox.shrink(),
+      error: (_, _) => const SizedBox.shrink(),
       data: (providers) {
         if (providers.isEmpty) return const SizedBox.shrink();
         return Column(

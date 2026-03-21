@@ -1,96 +1,76 @@
+import 'package:dio/dio.dart';
 import '../../../../core/network/api_endpoints.dart';
-import '../../../../core/network/dio_client.dart';
-import '../models/market_data.dart';
-import '../models/stock.dart';
-import 'package:riverpod_annotation/riverpod_annotation.dart';
-import '../../../../core/providers/dio_provider.dart';
-
-part 'market_repository.g.dart';
+import '../models/market_models.dart';
 
 class MarketRepository {
-  final DioClient _dioClient;
+  final Dio _dio;
 
-  MarketRepository(this._dioClient);
+  MarketRepository(this._dio);
 
-  Future<List<StockMetadata>> getStocks() async {
-    final response = await _dioClient.dio.get(ApiEndpoints.stocks);
-    return (response.data as List)
-        .map((e) => StockMetadata.fromJson(e))
-        .toList();
+  Future<List<String>> getSymbols() async {
+    final response = await _dio.get(ApiEndpoints.symbols);
+    return List<String>.from(response.data);
   }
 
-  Future<StockMetadata> getStockDetail(String symbol) async {
-    final response = await _dioClient.dio.get(ApiEndpoints.stockDetail(symbol));
-    return StockMetadata.fromJson(response.data);
+  Future<LatestQuoteResponse> getQuote(String symbol) async {
+    final response = await _dio.get(ApiEndpoints.quote(symbol));
+    return LatestQuoteResponse.fromJson(response.data);
   }
 
-  Future<List<MarketDataPoint>> getStockHistory(
-      String symbol, {String? startDate, String? endDate, int limit = 500}) async {
-    final response = await _dioClient.dio.get(
-      ApiEndpoints.stockHistory(symbol),
-      queryParameters: {
-        if (startDate != null) 'start_date': startDate,
-        if (endDate != null) 'end_date': endDate,
-        'limit': limit,
-      },
-    );
-    // Backend returns HistoryResponse { symbol: ..., data: [...] }
-    final List data = response.data['data'];
-    return data.map((e) => MarketDataPoint.fromJson(e)).toList();
+  Future<HistoricDataResponse> getHistory(String symbol, {String? startDate, String? endDate, int limit = 500}) async {
+    final params = <String, dynamic>{'limit': limit};
+    if (startDate != null) params['start_date'] = startDate;
+    if (endDate != null) params['end_date'] = endDate;
+    final response = await _dio.get(ApiEndpoints.history(symbol), queryParameters: params);
+    return HistoricDataResponse.fromJson(response.data);
   }
 
-  Future<Map<String, dynamic>> computeIndicator(
-    String symbol,
-    String indicator, {
-    int period = 14,
-    int? fast,
-    int? slow,
-    int? signal,
-  }) async {
-    final response = await _dioClient.dio.get(
-      ApiEndpoints.stockIndicators(symbol),
-      queryParameters: {
-        'indicator': indicator,
-        'period': period,
-        if (fast != null) 'fast': fast,
-        if (slow != null) 'slow': slow,
-        if (signal != null) 'signal': signal,
-      },
-    );
-    return response.data as Map<String, dynamic>;
+  Future<IndicatorsResponse> getIndicators(String symbol, {String? startDate, String? endDate, int limit = 500}) async {
+    final params = <String, dynamic>{'limit': limit};
+    if (startDate != null) params['start_date'] = startDate;
+    if (endDate != null) params['end_date'] = endDate;
+    final response = await _dio.get(ApiEndpoints.indicators(symbol), queryParameters: params);
+    return IndicatorsResponse.fromJson(response.data);
   }
 
-  Future<Map<String, dynamic>> saveChartDrawing({
+  Future<IndicatorRow> getLatestIndicators(String symbol) async {
+    final response = await _dio.get(ApiEndpoints.latestIndicators(symbol));
+    return IndicatorRow.fromJson(response.data);
+  }
+
+  Future<IndicesResponse> getIndices({String? indexName, String? startDate, String? endDate, int limit = 500}) async {
+    final params = <String, dynamic>{'limit': limit};
+    if (indexName != null) params['index_name'] = indexName;
+    if (startDate != null) params['start_date'] = startDate;
+    if (endDate != null) params['end_date'] = endDate;
+    final response = await _dio.get(ApiEndpoints.indices, queryParameters: params);
+    return IndicesResponse.fromJson(response.data);
+  }
+
+  Future<LatestIndicesResponse> getLatestIndices({String? indexName}) async {
+    final params = <String, dynamic>{};
+    if (indexName != null) params['index_name'] = indexName;
+    final response = await _dio.get(ApiEndpoints.latestIndices, queryParameters: params);
+    return LatestIndicesResponse.fromJson(response.data);
+  }
+
+  Future<List<Map<String, dynamic>>> getChartDrawings(String symbol) async {
+    final response = await _dio.get(ApiEndpoints.chartDrawingsBySymbol(symbol));
+    return List<Map<String, dynamic>>.from(response.data);
+  }
+
+  Future<void> saveChartDrawing({
     required String symbol,
     required String type,
     required Map<String, dynamic> coordinates,
-    Map<String, dynamic>? parameters,
-    String? label,
   }) async {
-    final response = await _dioClient.dio.post(
+    await _dio.post(
       ApiEndpoints.chartDrawings,
-      data: {
-        'symbol': symbol,
-        'drawing_type': type,
-        'coordinates': coordinates,
-        'parameters': parameters,
-        'label': label,
-      },
+      data: {'symbol': symbol, 'drawing_type': type, 'coordinates': coordinates},
     );
-    return response.data as Map<String, dynamic>;
   }
 
-  Future<List<dynamic>> getChartDrawings(String symbol) async {
-    final response = await _dioClient.dio.get(ApiEndpoints.stockChartDrawings(symbol));
-    return response.data as List;
+  Future<void> deleteChartDrawing(int drawingId) async {
+    await _dio.delete(ApiEndpoints.deleteChartDrawing(drawingId));
   }
-
-  Future<void> deleteChartDrawing(int id) async {
-    await _dioClient.dio.delete(ApiEndpoints.deleteChartDrawing(id.toString()));
-  }
-}
-
-@riverpod
-MarketRepository marketRepository(Ref ref) {
-  return MarketRepository(ref.watch(dioClientProvider));
 }

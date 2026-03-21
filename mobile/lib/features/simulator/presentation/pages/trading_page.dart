@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../providers/simulator_provider.dart';
-import '../../data/repositories/simulator_repository.dart';
 
 class TradingPage extends ConsumerWidget {
   final int simulationId;
@@ -46,7 +45,7 @@ class TradingPage extends ConsumerWidget {
                         Text('Total Value', style: TextStyle(color: Colors.grey[600])),
                         const SizedBox(height: 8),
                         Text(
-                          'Rs. ${sim.totalValue?.toStringAsFixed(2) ?? "0.0"}',
+                          'Rs. ${sim.total_value?.toStringAsFixed(2) ?? "0.0"}',
                           style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 16),
@@ -57,7 +56,7 @@ class TradingPage extends ConsumerWidget {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 const Text('Cash Balance'),
-                                Text('Rs. ${sim.cashBalance.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                                Text('Rs. ${sim.cash_balance.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.bold)),
                               ],
                             ),
                             Column(
@@ -65,10 +64,10 @@ class TradingPage extends ConsumerWidget {
                               children: [
                                 const Text('Portfolio Return'),
                                 Text(
-                                  '${(((sim.totalValue ?? sim.initialCapital) / sim.initialCapital) * 100 - 100).toStringAsFixed(2)}%',
+                                  '${(((sim.total_value ?? sim.initial_capital) / sim.initial_capital) * 100 - 100).toStringAsFixed(2)}%',
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
-                                    color: ((sim.totalValue ?? 0) >= sim.initialCapital) ? Colors.green : Colors.red,
+                                    color: ((sim.total_value ?? 0) >= sim.initial_capital) ? Colors.green : Colors.red,
                                   ),
                                 ),
                               ],
@@ -79,7 +78,7 @@ class TradingPage extends ConsumerWidget {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text('Current Date: ${sim.currentSimDate.toIso8601String().split("T").first}', style: const TextStyle(fontWeight: FontWeight.w500)),
+                            Text('Current Date: ${sim.current_sim_date.split("T").first}', style: const TextStyle(fontWeight: FontWeight.w500)),
                             if (!isEnded)
                               TextButton.icon(
                                 icon: const Icon(Icons.skip_next),

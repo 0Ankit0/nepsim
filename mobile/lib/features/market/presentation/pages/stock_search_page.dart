@@ -20,7 +20,7 @@ class StockSearchPage extends ConsumerWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
             child: TextField(
               decoration: InputDecoration(
-                hintText: 'Search symbol or company...',
+                hintText: 'Search symbol...',
                 prefixIcon: const Icon(Icons.search),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -37,55 +37,28 @@ class StockSearchPage extends ConsumerWidget {
       body: filteredStocksAsync.when(
         data: (stocks) {
           if (stocks.isEmpty) {
-            return const Center(child: Text('No stocks found.'));
+            return const Center(child: Text('No symbols found.'));
           }
           return ListView.separated(
             padding: const EdgeInsets.all(12),
             itemCount: stocks.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 8),
+            separatorBuilder: (_, _) => const SizedBox(height: 8),
             itemBuilder: (context, index) {
-              final stock = stocks[index];
-              final price = stock.currentPrice ?? 0.0;
-              final change = stock.changePct ?? 0.0;
-              final isPositive = change >= 0;
-
+              final symbol = stocks[index];
               return Card(
                 elevation: 1,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 child: ListTile(
-                  title: Text(stock.symbol, style: const TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: Text(
-                    stock.companyName,
+                  title: Text(symbol, style: const TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: const Text(
+                    'Tap to view interactive chart and trade',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                    style: TextStyle(color: Colors.grey, fontSize: 13),
                   ),
-                  trailing: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text('Rs. ${price.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                      const SizedBox(height: 2),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: (isPositive ? Colors.green : Colors.red).withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          '${isPositive ? '+' : ''}${change.toStringAsFixed(2)}%',
-                          style: TextStyle(
-                            color: isPositive ? Colors.green[700] : Colors.red[700],
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
                   onTap: () {
-                    // Navigate to stock detail
-                    context.push('${AppConstants.stockDetailRoute}?symbol=${stock.symbol}');
+                    context.push('${AppConstants.stockDetailRoute}?symbol=$symbol');
                   },
                 ),
               );

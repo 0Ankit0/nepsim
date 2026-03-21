@@ -1,74 +1,52 @@
+import 'package:dio/dio.dart';
 import '../../../../core/network/api_endpoints.dart';
-import '../../../../core/network/dio_client.dart';
-import '../models/simulation.dart';
-import '../models/trade.dart';
-import 'package:riverpod_annotation/riverpod_annotation.dart';
-import '../../../../core/providers/dio_provider.dart';
-
-part 'simulator_repository.g.dart';
+import '../models/simulator_models.dart';
 
 class SimulatorRepository {
-  final DioClient _dioClient;
+  final Dio _dio;
 
-  SimulatorRepository(this._dioClient);
+  SimulatorRepository(this._dio);
 
-  Future<List<Simulation>> listSimulations() async {
-    final response = await _dioClient.dio.get(ApiEndpoints.simulations);
-    return (response.data as List).map((e) => Simulation.fromJson(e)).toList();
-  }
-
-  Future<Simulation> createSimulation(double initialCapital) async {
-    final response = await _dioClient.dio.post(
+  Future<SimulationResponse> createSimulation(double initialCapital, {String? name}) async {
+    final response = await _dio.post(
       ApiEndpoints.simulations,
-      data: {'initial_capital': initialCapital},
+      data: {'initial_capital': initialCapital, 'name': ?name},
     );
-    return Simulation.fromJson(response.data);
+    return SimulationResponse.fromJson(response.data);
   }
 
-  Future<Simulation> getSimulation(int id) async {
-    final response = await _dioClient.dio.get(
-      ApiEndpoints.simulationDetail(id),
-      queryParameters: {'include_holdings': true},
-    );
-    return Simulation.fromJson(response.data);
+  Future<List<SimulationSummary>> listSimulations() async {
+    final response = await _dio.get(ApiEndpoints.simulations);
+    return (response.data as List)
+        .map((e) => SimulationSummary.fromJson(e))
+        .toList();
   }
 
-  Future<Trade> executeTrade(
-    int simulationId,
-    String symbol,
-    String side,
-    int quantity,
-  ) async {
-    final response = await _dioClient.dio.post(
-      ApiEndpoints.simulationTrade(simulationId),
-      data: {'symbol': symbol, 'side': side, 'quantity': quantity},
-    );
-    return Trade.fromJson(response.data);
+  Future<SimulationResponse> getSimulation(int id) async {
+    final response = await _dio.get(ApiEndpoints.simulationDetail(id));
+    return SimulationResponse.fromJson(response.data);
   }
 
-  Future<Simulation> advanceDay(int simulationId) async {
-    final response = await _dioClient.dio.post(
-      ApiEndpoints.simulationAdvanceDay(simulationId),
+  Future<TradeResponse> executeTrade(int id, TradeRequest request) async {
+    final response = await _dio.post(
+      ApiEndpoints.simulationTrade(id),
+      data: request.toJson(),
     );
-    return Simulation.fromJson(response.data);
+    return TradeResponse.fromJson(response.data);
   }
 
-  Future<Simulation> endSimulation(int simulationId) async {
-    final response = await _dioClient.dio.post(
-      ApiEndpoints.simulationEnd(simulationId),
-    );
-    return Simulation.fromJson(response.data);
+  Future<SimulationResponse> advanceDay(int id) async {
+    final response = await _dio.post(ApiEndpoints.simulationAdvanceDay(id));
+    return SimulationResponse.fromJson(response.data);
   }
 
-  Future<List<Trade>> getTrades(int simulationId) async {
-    final response = await _dioClient.dio.get(
-      ApiEndpoints.simulationTrades(simulationId),
-    );
-    return (response.data as List).map((e) => Trade.fromJson(e)).toList();
+  Future<EndSimulationResponse> endSimulation(int id) async {
+    final response = await _dio.post(ApiEndpoints.simulationEnd(id));
+    return EndSimulationResponse.fromJson(response.data);
   }
-}
 
-@riverpod
-SimulatorRepository simulatorRepository(Ref ref) {
-  return SimulatorRepository(ref.watch(dioClientProvider));
+  Future<AIAnalysisResponse> getAnalysis(int id) async {
+    final response = await _dio.get(ApiEndpoints.simulationAnalysis(id));
+    return AIAnalysisResponse.fromJson(response.data);
+  }
 }
