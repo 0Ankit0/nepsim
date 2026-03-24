@@ -179,7 +179,7 @@ async def compute_indicator(
     db: AsyncSession = Depends(get_session),
     _: User = Depends(get_current_user),
 ):
-    """Compute technical indicator values for a symbol. Supports 50+ pandas-ta indicators."""
+    """Return pre-computed technical indicator values for a symbol from Supabase."""
     req = IndicatorRequest(
         symbol=symbol,
         indicator=indicator,

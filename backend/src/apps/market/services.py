@@ -7,7 +7,6 @@ from __future__ import annotations
 from datetime import date
 from typing import Optional
 
-import pandas as pd
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select, and_
 
