@@ -121,7 +121,15 @@ class MarketService:
                 return None
             row = rows[0]
             # Prefer ltp (last traded price), fall back to close
-            return float(row.get("ltp") or row.get("close") or 0) or None
+            if isinstance(row, dict):
+                value = row.get("ltp") or row.get("close")
+                if isinstance(value, (int, float, str)):
+                    try:
+                        return float(value)
+                    except (TypeError, ValueError):
+                        return None
+                return None
+            return None
         except Exception:
             return None
 
