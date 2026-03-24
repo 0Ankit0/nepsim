@@ -35,10 +35,10 @@ export const useNepseHistory = (symbol: string, startDate?: string, endDate?: st
   });
 };
 
-export const useNepseIndicators = (symbol: string, startDate?: string, endDate?: string) => {
+export const useNepseIndicators = (symbol: string, startDate?: string, endDate?: string, limit?: number) => {
   return useQuery({
-    queryKey: ['market', 'indicators', symbol, startDate, endDate],
-    queryFn: () => marketApi.getIndicators(symbol, startDate, endDate),
+    queryKey: ['market', 'indicators', symbol, startDate, endDate, limit],
+    queryFn: () => marketApi.getIndicators(symbol, startDate, endDate, limit ?? 500),
     enabled: !!symbol,
   });
 };
