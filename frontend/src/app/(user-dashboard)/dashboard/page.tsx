@@ -5,7 +5,8 @@
 import { useAuthStore } from '@/store/auth-store';
 import { useNotifications } from '@/hooks/use-notifications';
 import { useTokens } from '@/hooks/use-tokens';
-import { useSimulations, useStocks } from '@/hooks';
+import { useSimulations } from '@/hooks';
+import { useAllNepseQuotes } from '@/hooks/useMarket';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { 
   Bell, Shield, Key, CheckCircle, Clock, AlertTriangle, 
@@ -20,7 +21,7 @@ export default function DashboardPage() {
   const { data: notifData, isLoading: loadingNotifs } = useNotifications({ limit: 5 });
   const { data: tokenData } = useTokens({ limit: 1 });
   const { data: simulations } = useSimulations({ limit: 1 });
-  const { data: stocks, isLoading: loadingStocks } = useStocks({ limit: 4 });
+  const { data: stocksData, isLoading: loadingStocks } = useAllNepseQuotes();
 
   const recentNotifs = notifData?.items ?? [];
   const unreadCount = notifData?.unread_count ?? 0;
@@ -97,12 +98,12 @@ export default function DashboardPage() {
                 <div className="flex-1 space-y-4">
                   <div>
                     <p className="text-sm text-gray-500">Current Balance</p>
-                    <p className="text-3xl font-bold text-gray-900">Rs. {simulations![0].current_balance.toLocaleString()}</p>
+                    <p className="text-3xl font-bold text-gray-900">Rs. {(simulations![0].current_balance ?? 0).toLocaleString()}</p>
                   </div>
                   <div className="flex gap-4">
                     <div className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full text-sm font-medium border border-emerald-100 flex items-center gap-1.5">
                       <TrendingUp className="h-3.5 w-3.5" />
-                      +{simulations![0].total_pnl_pct.toFixed(2)}%
+                      +{(simulations![0].total_pnl_pct ?? 0).toFixed(2)}%
                     </div>
                     <div className="px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full text-sm font-medium border border-indigo-100 flex items-center gap-1.5">
                       <Clock className="h-3.5 w-3.5" />
@@ -225,22 +226,21 @@ export default function DashboardPage() {
                    <div className="space-y-2">
                       {[1, 2, 3].map(i => <div key={i} className="h-10 bg-gray-100 rounded animate-pulse" />)}
                    </div>
-                ) : (stocks?.items ?? []).slice(0, 4).map(stock => (
+                ) : (stocksData?.data ?? []).slice(0, 4).map(stock => (
                    <div key={stock.symbol} className="flex items-center justify-between p-2 hover:bg-gray-50 rounded-lg transition-colors">
                       <div className="flex items-center gap-3">
                          <div className="h-8 w-8 rounded bg-slate-100 flex items-center justify-center font-bold text-slate-600 text-[10px]">
-                            {stock.symbol.substring(0, 3)}
+                            {stock.symbol?.substring(0, 3)}
                          </div>
                          <div className="min-w-0">
                             <p className="text-sm font-bold text-gray-900 truncate">{stock.symbol}</p>
-                            <p className="text-[10px] text-gray-500">{stock.sector}</p>
                          </div>
                       </div>
                       <div className="text-right">
-                         <p className="text-sm font-bold text-gray-900">Rs. {stock.last_price}</p>
-                         <p className={`text-[10px] font-medium flex items-center justify-end gap-1 ${stock.change_pct >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                            {stock.change_pct >= 0 ? <TrendingUp className="h-2.5 w-2.5" /> : <TrendingDown className="h-2.5 w-2.5" />}
-                            {stock.change_pct.toFixed(2)}%
+                         <p className="text-sm font-bold text-gray-900">Rs. {stock.ltp ?? stock.close ?? '—'}</p>
+                         <p className={`text-[10px] font-medium flex items-center justify-end gap-1 ${(stock.diff_pct ?? 0) >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                            {(stock.diff_pct ?? 0) >= 0 ? <TrendingUp className="h-2.5 w-2.5" /> : <TrendingDown className="h-2.5 w-2.5" />}
+                            {(stock.diff_pct ?? 0).toFixed(2)}%
                          </p>
                       </div>
                    </div>

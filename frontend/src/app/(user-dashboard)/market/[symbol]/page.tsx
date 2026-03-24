@@ -1,7 +1,7 @@
 'use client';
 
 import { use, useEffect, useRef, Suspense } from 'react';
-import { createChart, ColorType, IChartApi, ISeriesApi } from 'lightweight-charts';
+import { createChart, ColorType, IChartApi, ISeriesApi, CandlestickSeries, HistogramSeries } from 'lightweight-charts';
 import { useNepseQuote, useNepseHistory, useNepseLatestIndicators } from '@/hooks/useMarket';
 import { useExecuteTrade } from '@/hooks/useSimulator';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -41,11 +41,11 @@ function SymbolDashboard({ symbol }: { symbol: string }) {
             rightPriceScale: { borderColor: '#e5e7eb' },
         });
 
-        seriesInstance.current = (chartInstance.current as any).addCandlestickSeries({
+        seriesInstance.current = chartInstance.current.addSeries(CandlestickSeries, {
             upColor: '#10b981', downColor: '#f43f5e', borderVisible: false, wickUpColor: '#10b981', wickDownColor: '#f43f5e',
         });
 
-        volumeSeriesInstance.current = (chartInstance.current as any).addHistogramSeries({
+        volumeSeriesInstance.current = chartInstance.current.addSeries(HistogramSeries, {
             color: '#e5e7eb', priceFormat: { type: 'volume' }, priceScaleId: '', scaleMargins: { top: 0.8, bottom: 0 },
         });
 

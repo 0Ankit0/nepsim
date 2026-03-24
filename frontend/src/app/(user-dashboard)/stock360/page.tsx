@@ -62,7 +62,10 @@ function PriceChart({ history, symbol }: { history: PricePoint[]; symbol: string
 
   useEffect(() => {
     if (!containerRef.current) return;
-    chartRef.current?.remove();
+    if (chartRef.current) {
+      chartRef.current.remove();
+      chartRef.current = null;
+    }
 
     const chart = createChart(containerRef.current, {
       layout: { background: { type: ColorType.Solid, color: '#ffffff' }, textColor: '#374151' },
@@ -111,6 +114,7 @@ function PriceChart({ history, symbol }: { history: PricePoint[]; symbol: string
     return () => {
       window.removeEventListener('resize', handleResize);
       chart.remove();
+      chartRef.current = null;
     };
   }, [filteredHistory, mode]);
 

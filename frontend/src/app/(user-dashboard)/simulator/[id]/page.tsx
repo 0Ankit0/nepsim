@@ -17,9 +17,11 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { use } from 'react';
 
-export default function TradingDashboardPage({ params }: { params: { id: string } }) {
-  const id = parseInt(params.id);
+export default function TradingDashboardPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id: rawId } = use(params);
+  const id = parseInt(rawId);
   const { data: sim, isLoading } = useSimulation(id);
   const { data: symbols } = useSymbols();
   
