@@ -1,0 +1,4 @@
+# file: /home/runner/work/nepsim/nepsim/backend/src/apps/ai_analysis/services.py
+# hypothesis_version: 6.151.9
+
+[0.0, 0.5, 100, 252, 500, 4096, 'ANTHROPIC_API_KEY', 'GEMINI_API_KEY', 'LLM_PROVIDER', 'NEPSE', 'OPENAI_API_KEY', 'anthropic', 'application/json', 'avg_holding_days', 'best_trade_pnl', 'content', 'executed_price', 'fallback', 'gemini', 'gemini-1.5-flash', 'gpt-4o-mini', 'json_object', 'losing_trades', 'max_drawdown', 'openai', 'patience_score', 'quantity', 'realised_pnl', 'risk_score', 'role', 'selection_score', 'sharpe_ratio', 'side', 'sim_date', 'summary_narrative', 'symbol', 'system', 'timing_score', 'total_pnl', 'total_pnl_pct', 'total_trades', 'trade_id', 'type', 'user', 'what_you_did_right', 'what_you_did_wrong', 'win_rate', 'winning_trades', 'worst_trade_pnl']

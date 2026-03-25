@@ -1,0 +1,4 @@
+# file: /home/runner/work/nepsim/nepsim/backend/src/db/supabase.py
+# hypothesis_version: 6.151.9
+
+['SUPABASE_KEY', 'SUPABASE_URL']

@@ -1,0 +1,4 @@
+# file: /home/runner/work/nepsim/nepsim/backend/src/apps/watchlist/api.py
+# hypothesis_version: 6.151.9
+
+[404, ' | ', ', ', '/', '/alerts', '/check-signals', '/watchlist', '/{item_id}', '/{item_id}/analysis', 'ACCUMULATE', 'Alert not found.', 'BUY', 'BUY_CONSIDER', 'BUY_STRONG', 'STRONG_BUY', 'Watchlist', 'ok']
