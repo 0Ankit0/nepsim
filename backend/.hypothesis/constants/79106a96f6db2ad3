@@ -1,4 +1,0 @@
-# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/core/celery_app.py
-# hypothesis_version: 6.151.9
-
-[3600, 'UTC', '__main__', 'json', 'nepsim', 'src.apps.core.tasks', 'src.apps.iam.tasks']

@@ -1,4 +1,0 @@
-# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/iam/schemas/rbac.py
-# hypothesis_version: 6.151.9
-
-['from_attributes', 'id', 'permission_id', 'role_id', 'user_id']

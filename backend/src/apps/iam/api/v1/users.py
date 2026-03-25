@@ -1,16 +1,22 @@
 """
 User management endpoints with caching and pagination
 """
+import base64
 import os
 import uuid
+import secrets
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlmodel import select, func, or_, col
 from typing import Optional
 from src.apps.iam.api.deps import get_current_user, get_current_active_superuser, get_db
-from src.apps.iam.models.user import User
+from src.apps.iam.models import User, UserSyncSettings
 from src.apps.iam.schemas.user import UserResponse, UserUpdate
+from src.apps.iam.schemas.sync_settings import UserSyncSettingsRead, UserSyncSettingsUpdate
 from src.apps.iam.utils.hashid import decode_id_or_404
 from src.apps.core.schemas import PaginatedResponse
 from src.apps.core.cache import RedisCache
@@ -20,6 +26,42 @@ from src.apps.analytics.service import AnalyticsService
 from src.apps.analytics.events import UserEvents
 
 router = APIRouter(prefix="/users")
+
+
+def _derive_sync_key() -> bytes:
+    digest = hashes.Hash(hashes.SHA256())
+    digest.update(settings.SECRET_KEY.encode("utf-8"))
+    digest.update(b":user-sync-settings")
+    return digest.finalize()
+
+
+def _encrypt_sync_secret(value: str) -> str:
+    key = _derive_sync_key()
+    nonce = secrets.token_bytes(12)
+    ciphertext = AESGCM(key).encrypt(nonce, value.encode("utf-8"), None)
+    payload = base64.urlsafe_b64encode(nonce + ciphertext).decode("utf-8")
+    return payload
+
+
+async def _get_or_create_sync_settings(db: AsyncSession, user_id: int) -> UserSyncSettings:
+    result = await db.execute(
+        select(UserSyncSettings).where(col(UserSyncSettings.user_id) == user_id)
+    )
+    sync_settings = result.scalars().first()
+    if sync_settings is None:
+        sync_settings = UserSyncSettings(user_id=user_id)
+        db.add(sync_settings)
+        await db.commit()
+        await db.refresh(sync_settings)
+    return sync_settings
+
+
+def _serialize_sync_settings(sync_settings: UserSyncSettings) -> UserSyncSettingsRead:
+    return UserSyncSettingsRead(
+        backup_gemini_key_to_cloud=sync_settings.backup_gemini_key_to_cloud,
+        cloud_gemini_key_stored=bool(sync_settings.encrypted_gemini_api_key),
+        last_synced_at=sync_settings.last_synced_at,
+    )
 
 
 @router.get("/", response_model=PaginatedResponse[UserResponse])
@@ -119,6 +161,62 @@ async def get_current_user_profile(
     await RedisCache.set(cache_key, cache_data, ttl=300)
     
     return current_user
+
+
+@router.get("/me/sync-settings", response_model=UserSyncSettingsRead)
+async def get_current_user_sync_settings(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    assert isinstance(current_user.id, int), "User Id can't be None"
+    sync_settings = await _get_or_create_sync_settings(db, current_user.id)
+    return _serialize_sync_settings(sync_settings)
+
+
+@router.put("/me/sync-settings", response_model=UserSyncSettingsRead)
+async def update_current_user_sync_settings(
+    data: UserSyncSettingsUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    assert isinstance(current_user.id, int), "User Id can't be None"
+    sync_settings = await _get_or_create_sync_settings(db, current_user.id)
+
+    sync_settings.backup_gemini_key_to_cloud = data.backup_gemini_key_to_cloud
+    sync_settings.updated_at = datetime.utcnow()
+    sync_settings.last_synced_at = datetime.utcnow()
+
+    if data.backup_gemini_key_to_cloud:
+        if not data.gemini_api_key:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Gemini API key is required when encrypted backup is enabled.",
+            )
+        sync_settings.encrypted_gemini_api_key = _encrypt_sync_secret(data.gemini_api_key)
+    else:
+        sync_settings.encrypted_gemini_api_key = None
+
+    db.add(sync_settings)
+    await db.commit()
+    await db.refresh(sync_settings)
+    return _serialize_sync_settings(sync_settings)
+
+
+@router.delete("/me/sync-settings/gemini-key", response_model=UserSyncSettingsRead)
+async def delete_current_user_gemini_key_backup(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    assert isinstance(current_user.id, int), "User Id can't be None"
+    sync_settings = await _get_or_create_sync_settings(db, current_user.id)
+    sync_settings.backup_gemini_key_to_cloud = False
+    sync_settings.encrypted_gemini_api_key = None
+    sync_settings.updated_at = datetime.utcnow()
+    sync_settings.last_synced_at = datetime.utcnow()
+    db.add(sync_settings)
+    await db.commit()
+    await db.refresh(sync_settings)
+    return _serialize_sync_settings(sync_settings)
 
 
 @router.post("/me/avatar", response_model=UserResponse)

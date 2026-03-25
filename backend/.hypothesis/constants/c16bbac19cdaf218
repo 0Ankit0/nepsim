@@ -1,4 +1,0 @@
-# file: /home/runner/work/nepsim/nepsim/backend/src/apps/portfolio/models.py
-# hypothesis_version: 6.151.9
-
-[500, 'portfolio_alerts', 'portfolio_items', 'portfolio_items.id', 'user.id']

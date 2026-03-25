@@ -1,4 +1,0 @@
-# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/ai_analysis/models.py
-# hypothesis_version: 6.151.9
-
-[500, 'Max drawdown %', 'Total P&L in NPR', 'Total return %', 'Win rate 0.0–1.0', 'ai_analyses', 'completed', 'failed', 'pending', 'processing', 'simulations.id', 'user.id']

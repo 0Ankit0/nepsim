@@ -1,4 +1,0 @@
-# file: /home/runner/work/nepsim/nepsim/backend/src/apps/portfolio/api.py
-# hypothesis_version: 6.151.9
-
-[100, 404, ' | ', ', ', '/', '/alerts', '/analyze-all', '/portfolio', '/{item_id}', '/{item_id}/analysis', 'Alert not found.', 'Portfolio', 'SELL', 'SELL_CONSIDER', 'SELL_STRONG', 'STRONG_SELL', 'WARNING', 'ok']

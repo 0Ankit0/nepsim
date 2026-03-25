@@ -1,4 +1,0 @@
-# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/analytics/events.py
-# hypothesis_version: 6.151.9
-
-['api_error', 'api_request', 'avatar_uploaded', 'email_verified', 'otp_disabled', 'otp_enabled', 'otp_validated', 'password_changed', 'payment_completed', 'payment_failed', 'payment_initiated', 'profile_updated', 'subscription_started', 'tenant_created', 'tenant_member_joined', 'token_revoked', 'user_logged_in', 'user_logged_out', 'user_signed_up']

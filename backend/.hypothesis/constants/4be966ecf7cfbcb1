@@ -1,4 +1,0 @@
-# file: /home/runner/work/nepsim/nepsim/backend/src/apps/market/api.py
-# hypothesis_version: 6.151.9
-
-[0.0, 100, 200, 403, 404, 500, 2000, 5000, '/chart-drawings', '/market', '/nepse/all-quotes', '/nepse/indices', '/nepse/symbols', '/stocks', '/stocks/{symbol}', 'Drawing not found.', 'End date YYYY-MM-DD', 'Market Data']

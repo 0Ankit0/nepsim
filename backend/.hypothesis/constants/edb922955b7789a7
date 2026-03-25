@@ -1,4 +1,0 @@
-# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/iam/models/role.py
-# hypothesis_version: 6.151.9
-
-[100, 255, 'Permission ID', 'Role ID', 'Role description', 'RolePermission', 'Unique role name', 'User', 'User ID', 'UserRole', 'permission', 'permission.id', 'role', 'role.id', 'role_permissions', 'user.id', 'user_roles']

@@ -1,4 +1,0 @@
-# file: /home/runner/work/nepsim/nepsim/backend/src/apps/market_analysis/api.py
-# hypothesis_version: 6.151.9
-
-[0.0, 100, 404, 500, 9999, '%Y-%m-%d', '/360/{symbol}', '/market-analysis', '/market-overview', '/top-stocks', '/{symbol}', 'BUY', 'HOLD', 'Market Analysis', 'SELL', 'STRONG_BUY', 'STRONG_SELL']

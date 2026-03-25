@@ -1,4 +1,0 @@
-# file: /home/runner/work/nepsim/nepsim/backend/src/apps/watchlist/models.py
-# hypothesis_version: 6.151.9
-
-[500, 'user.id', 'watchlist_alerts', 'watchlist_items', 'watchlist_items.id']

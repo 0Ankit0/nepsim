@@ -1,4 +1,0 @@
-# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/websocket/schemas/messages.py
-# hypothesis_version: 6.151.9
-
-['ack', 'broadcast', 'error', 'event', 'handshake', 'join_room', 'leave_room', 'message', 'ping', 'pong', 'presence', 'system', 'typing']

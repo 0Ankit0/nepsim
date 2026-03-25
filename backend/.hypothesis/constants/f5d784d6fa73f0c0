@@ -1,4 +1,0 @@
-# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/notification/services/__init__.py
-# hypothesis_version: 6.151.9
-
-['create_notification', 'delete_notification', 'get_notification', 'mark_all_read', 'mark_as_read']

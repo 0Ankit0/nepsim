@@ -1,4 +1,0 @@
-# file: /home/runner/work/nepsim/nepsim/backend/src/apps/market/services.py
-# hypothesis_version: 6.151.9
-
-[200, 500, 1000, 'adx', 'atr', 'bb', 'bbands', 'bollinger', 'cci', 'close', 'date', 'ema', 'historicdata', 'ltp', 'ltp, close', 'macd', 'mfi', 'obv', 'rsi', 'sma', 'stoch', 'stochastic', 'symbol', 'vwap', 'williamsR', 'williams_r', 'wr']

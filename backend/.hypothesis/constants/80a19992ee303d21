@@ -1,4 +1,0 @@
-# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/iam/api/v1/auth/token.py
-# hypothesis_version: 6.151.9
-
-['/refresh/', 'Token refreshed', 'exp', 'jti', 'lax', 'message', 'sub', 'unknown', 'user-agent']

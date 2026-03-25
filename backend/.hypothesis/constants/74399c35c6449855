@@ -1,4 +1,0 @@
-# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/learn/services.py
-# hypothesis_version: 6.151.9
-
-[100, 300, 'ANTHROPIC_API_KEY', 'LLM_PROVIDER', 'OPENAI_API_KEY', 'anthropic', 'content', 'correct_option', 'explanation', 'gpt-4o-mini', 'is_correct', 'openai', 'question_id', 'question_text', 'role', 'selected_option', 'stock market', 'user']

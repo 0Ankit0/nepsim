@@ -1,4 +1,0 @@
-# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/finance/schemas/__init__.py
-# hypothesis_version: 6.151.9
-
-['EsewaCallbackData', 'EsewaInitiateData', 'KhaltiLookupRequest', 'KhaltiLookupResponse', 'VerifyPaymentRequest']
