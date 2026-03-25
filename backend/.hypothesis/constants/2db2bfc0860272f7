@@ -1,4 +1,0 @@
-# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/market/models.py
-# hypothesis_version: 6.151.9
-
-[1.0, 100.0, 100, 255, 500, 1000, 'Closing price in NPR', 'Full company name', 'General', 'NEPSE ticker symbol', 'Opening price in NPR', 'arrow', 'bonus_share', 'cash_dividend', 'chart_drawings', 'circle', 'corporate_actions', 'fibonacci_extension', 'horizontal_line', 'listed', 'market_data_ohlcv', 'merger', 'parallel_channel', 'price_label', 'rectangle', 'resistance_zone', 'right_share', 'split', 'stock_metadata', 'support_zone', 'text_note', 'trendline', 'triangle', 'user.id', 'vertical_line']

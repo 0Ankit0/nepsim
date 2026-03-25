@@ -1,4 +1,0 @@
-# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/websocket/api/v1/ws.py
-# hypothesis_version: 6.151.9
-
-[4004, 4005, 4030, '/', '/online/{user_id}/', '/room/{room}/', '/stats/', 'broadcast', 'id', 'is_typing', 'jti', 'online', 'sub', 'token', 'type', 'typing', 'user_id']

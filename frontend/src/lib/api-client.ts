@@ -2,6 +2,14 @@ import axios from 'axios';
 
 const baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 
+export function hasStoredAuthTokens() {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  return Boolean(localStorage.getItem('access_token') && localStorage.getItem('refresh_token'));
+}
+
 export const apiClient = axios.create({
   baseURL,
   headers: {
@@ -57,7 +65,7 @@ apiClient.interceptors.response.use(
         isRefreshing = false;
         if (typeof window !== 'undefined') {
           localStorage.removeItem('access_token');
-          window.location.href = '/login';
+          localStorage.removeItem('refresh_token');
         }
         return Promise.reject(error);
       }
@@ -83,7 +91,6 @@ apiClient.interceptors.response.use(
         if (typeof window !== 'undefined') {
           localStorage.removeItem('access_token');
           localStorage.removeItem('refresh_token');
-          window.location.href = '/login';
         }
         return Promise.reject(refreshError);
       } finally {

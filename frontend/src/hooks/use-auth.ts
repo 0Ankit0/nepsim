@@ -79,7 +79,7 @@ export function useAuth() {
       storeLogout();
       queryClient.clear();
       if (typeof window !== 'undefined') {
-        window.location.href = '/login';
+        window.location.href = '/';
       }
     }
   };
@@ -215,4 +215,3 @@ export function useResendVerification() {
     },
   });
 }
-

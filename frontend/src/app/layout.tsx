@@ -1,21 +1,11 @@
 import type { Metadata } from 'next';
-import { Geist, Geist_Mono } from 'next/font/google';
+import type { CSSProperties } from 'react';
 import './globals.css';
 import { Providers } from '@/components/providers';
 
-const geistSans = Geist({
-  variable: '--font-geist-sans',
-  subsets: ['latin'],
-});
-
-const geistMono = Geist_Mono({
-  variable: '--font-geist-mono',
-  subsets: ['latin'],
-});
-
 export const metadata: Metadata = {
-  title: 'Fastapi Template',
-  description: 'Modern Fastapi Template platform',
+  title: 'NEPSIM',
+  description: 'Offline-first NEPSE market simulator and learning platform',
 };
 
 export default function RootLayout({
@@ -25,7 +15,15 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+      <body
+        className="antialiased"
+        style={
+          {
+            ['--font-geist-sans' as string]: 'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+            ['--font-geist-mono' as string]: '"SFMono-Regular", "SFMono", Consolas, "Liberation Mono", Menlo, monospace',
+          } as CSSProperties
+        }
+      >
         <Providers>{children}</Providers>
       </body>
     </html>

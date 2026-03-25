@@ -4,7 +4,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
 import type { TokenTracking, PaginatedResponse } from '@/types';
 
-export function useTokens(params?: { skip?: number; limit?: number }) {
+export function useTokens(
+  params?: { skip?: number; limit?: number },
+  options?: { enabled?: boolean }
+) {
   return useQuery({
     queryKey: ['tokens', params],
     queryFn: async () => {
@@ -13,6 +16,7 @@ export function useTokens(params?: { skip?: number; limit?: number }) {
       });
       return response.data;
     },
+    enabled: options?.enabled ?? true,
   });
 }
 

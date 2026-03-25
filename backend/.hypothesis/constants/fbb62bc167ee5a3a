@@ -1,4 +1,0 @@
-# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/finance/models/payment.py
-# hypothesis_version: 6.151.9
-
-[100, 255, 500, 'NPR', 'callback', 'cancelled', 'completed', 'esewa', 'failed', 'initiated', 'khalti', 'payment_transactions', 'payment_webhooks', 'paypal', 'pending', 'refunded', 'stripe', 'user.id']

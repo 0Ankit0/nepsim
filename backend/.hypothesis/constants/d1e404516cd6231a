@@ -1,4 +1,0 @@
-# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/iam/models/__init__.py
-# hypothesis_version: 6.151.9
-
-['CasbinRule', 'LoginAttempt', 'Permission', 'Role', 'RolePermission', 'TokenTracking', 'UsedToken', 'User', 'UserProfile', 'UserRole']

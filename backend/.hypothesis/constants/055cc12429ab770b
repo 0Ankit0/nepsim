@@ -1,4 +1,0 @@
-# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/market/api.py
-# hypothesis_version: 6.151.9
-
-[100, 200, 403, 404, 500, 2000, '/chart-drawings', '/market', '/stocks', '/stocks/{symbol}', 'Drawing not found.', 'Market Data', 'message', 'utf-8']

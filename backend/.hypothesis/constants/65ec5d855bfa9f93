@@ -1,4 +1,0 @@
-# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/market/services.py
-# hypothesis_version: 6.151.9
-
-[2.0, 500, 1000, 'adx', 'atr', 'bb', 'bbands', 'bollinger', 'cci', 'close', 'date', 'ema', 'high', 'low', 'macd', 'mfi', 'obv', 'open', 'rsi', 'sma', 'stoch', 'stochastic', 'symbol', 'volume', 'vwap', 'williamsR', 'williams_r', 'wma', 'wr']
