@@ -1,4 +1,0 @@
-# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/iam/models/login_attempt.py
-# hypothesis_version: 6.151.9
-
-[255, 'CASCADE', 'login_attempts', 'user.id']

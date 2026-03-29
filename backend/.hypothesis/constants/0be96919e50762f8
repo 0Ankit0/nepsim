@@ -1,4 +1,0 @@
-# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/iam/models/token_tracking.py
-# hypothesis_version: 6.151.9
-
-[255, 'CASCADE', 'tokens', 'user.id']

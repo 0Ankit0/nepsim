@@ -1,4 +1,0 @@
-# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/iam/api/v1/auth/signup.py
-# hypothesis_version: 6.151.9
-
-['/signup/', '/verify-email/', '3/hour', 'Invalid token data', 'User not found', 'created_at', 'email', 'email_verification', 'exp', 'ip_address', 'jti', 'lax', 'message', 'purpose', 'sub', 'token', 'unknown', 'user-agent', 'user_agent', 'user_id', 'username', 'users:list:*']

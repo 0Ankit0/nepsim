@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { Bell, User, LogOut, Settings, ChevronRight, CheckCheck } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { useAuthStore } from '@/store/auth-store';
+import { hasStoredAuthTokens } from '@/lib/api-client';
+import { getOfflineGuestUser } from '@/lib/offline-data';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useNotifications, useMarkAllNotificationsRead, useMarkNotificationRead } from '@/hooks/use-notifications';
@@ -56,6 +58,11 @@ export function Header() {
 
         <div className="flex items-center gap-3">
           <LanguageSwitcher />
+          {!isAuthenticated && (
+            <Link href="/login">
+              <Button variant="outline" size="sm">Sync data</Button>
+            </Link>
+          )}
 
           {/* ── Notifications dropdown ── */}
           <div ref={notifRef} className="relative">
@@ -143,7 +150,7 @@ export function Header() {
                 <User className="h-4 w-4 text-blue-600" />
               </div>
               <span className="text-sm font-medium text-gray-700 max-w-[120px] truncate">
-                {user?.first_name || user?.username || user?.email || 'User'}
+                {effectiveUser?.first_name || effectiveUser?.username || effectiveUser?.email || 'User'}
               </span>
             </button>
 
@@ -152,11 +159,13 @@ export function Header() {
                 {/* Identity */}
                 <div className="px-4 py-3 border-b border-gray-100">
                   <p className="text-sm font-semibold text-gray-900 truncate">
-                    {user?.first_name && user?.last_name
-                      ? `${user.first_name} ${user.last_name}`
-                      : user?.username || 'User'}
+                    {effectiveUser?.first_name && effectiveUser?.last_name
+                      ? `${effectiveUser.first_name} ${effectiveUser.last_name}`
+                      : effectiveUser?.username || 'User'}
                   </p>
-                  <p className="text-xs text-gray-500 truncate mt-0.5">{user?.email}</p>
+                  <p className="text-xs text-gray-500 truncate mt-0.5">
+                    {isAuthenticated ? effectiveUser?.email : 'Stored locally on this device'}
+                  </p>
                 </div>
 
                 {/* Menu items */}
@@ -181,13 +190,24 @@ export function Header() {
 
                 {/* Logout */}
                 <div className="border-t border-gray-100 py-1">
-                  <button
-                    onClick={() => { setUserOpen(false); setShowLogoutDialog(true); }}
-                    className="flex w-full items-center gap-3 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
-                  >
-                    <LogOut className="h-4 w-4" />
-                    Sign out
-                  </button>
+                  {isAuthenticated ? (
+                    <button
+                      onClick={() => { setUserOpen(false); setShowLogoutDialog(true); }}
+                      className="flex w-full items-center gap-3 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                    >
+                      <LogOut className="h-4 w-4" />
+                      Sign out
+                    </button>
+                  ) : (
+                    <Link
+                      href="/login"
+                      onClick={() => setUserOpen(false)}
+                      className="flex w-full items-center gap-3 px-4 py-2 text-sm text-blue-600 hover:bg-blue-50 transition-colors"
+                    >
+                      <LogOut className="h-4 w-4" />
+                      Sign in to sync
+                    </Link>
+                  )}
                 </div>
               </div>
             )}

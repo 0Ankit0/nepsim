@@ -1,4 +1,0 @@
-# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/iam/utils/rbac.py
-# hypothesis_version: 6.151.9
-
-['Permission not found', 'Role not found', 'User not found', 'global']

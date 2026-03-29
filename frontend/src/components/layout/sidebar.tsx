@@ -18,7 +18,7 @@ import {
   ScanSearch,
 } from 'lucide-react';
 
-const navigation = [
+const coreNavigation = [
   { name: 'Dashboard', href: '/dashboard', icon: Home },
   { name: 'Market', href: '/market', icon: TrendingUp },
   { name: 'Portfolio', href: '/portfolio', icon: Briefcase },
@@ -27,22 +27,27 @@ const navigation = [
   { name: '360° View', href: '/stock360', icon: ScanSearch },
   { name: 'Simulator', href: '/simulator', icon: Activity },
   { name: 'Learn', href: '/learn', icon: GraduationCap },
+  { name: 'Settings', href: '/settings', icon: Settings },
+];
+
+const accountNavigation = [
   { name: 'Profile', href: '/profile', icon: User },
   { name: 'Payments', href: '/finances', icon: CreditCard },
   { name: 'Notifications', href: '/notifications', icon: Bell },
   { name: 'Active Sessions', href: '/tokens', icon: Key },
-  { name: 'Settings', href: '/settings', icon: Settings },
 ];
 
 
 export function Sidebar() {
   const pathname = usePathname();
+  const isAuthenticated = hasStoredAuthTokens();
+  const navigation = isAuthenticated ? [...coreNavigation, ...accountNavigation] : coreNavigation;
 
   return (
     <aside className="fixed inset-y-0 left-0 z-10 w-64 bg-white border-r border-gray-200">
       <div className="flex h-16 items-center justify-center border-b border-gray-200">
         <Link href="/dashboard" className="text-xl font-bold text-blue-600">
-          FastAPI Template
+          NEPSIM
         </Link>
       </div>
       <nav className="flex flex-col gap-1 p-4">

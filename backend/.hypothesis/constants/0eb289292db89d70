@@ -1,4 +1,0 @@
-# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/core/config.py
-# hypothesis_version: 6.151.9
-
-[587, 6379, ',', '.env', '/api/v1', '/media', '8gBm/:&EnhH.1/q', 'BACKEND_CORS_ORIGINS', 'CELERY_BROKER_URL', 'DATABASE_URL', 'DEBUG', 'EPAYTEST', 'REDIS_PASSWORD', 'REDIS_URL', 'SYNC_DATABASE_URL', '[', 'access_token', 'access_type', 'authorize_url', 'before', 'cache+memory://', 'code', 'data/nepse_ohlcv', 'email,public_profile', 'emails_url', 'extra_params', 'facebook', 'github', 'google', 'http://localhost', 'ignore', 'localhost', 'media', 'memory://', 'mydatabase', 'noreply@example.com', 'online', 'openai', 'openid email profile', 'password', 'postgres', 'posthog', 'read:user user:email', 'refresh_token', 'response_type', 'sandbox', 'scope', 'smtp.example.com', 'supersecretkey', 'token_url', 'user@example.com', 'userinfo_url']

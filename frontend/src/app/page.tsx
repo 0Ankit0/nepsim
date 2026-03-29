@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuthStore } from '@/store/auth-store';
 import { Button } from '@/components/ui/button';
-import { ShoppingCart, Shield, Zap, Users } from 'lucide-react';
+import { ShoppingCart, Shield, Zap, Users, Cloud, HardDrive } from 'lucide-react';
 
 const features = [
   {
@@ -28,6 +28,16 @@ const features = [
     title: 'Multi-Tenant',
     description: 'Support for organizations and teams with role-based access.',
   },
+  {
+    icon: HardDrive,
+    title: 'Offline First',
+    description: 'Use the simulator, portfolio, watchlist, and Gemini key locally before you ever sign in.',
+  },
+  {
+    icon: Cloud,
+    title: 'Sync When Ready',
+    description: 'Sign in later to sync your device data and optionally save an encrypted Gemini key backup.',
+  },
 ];
 
 export default function Home() {
@@ -45,13 +55,16 @@ export default function Home() {
       <header className="fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
-            <div className="text-xl font-bold text-blue-600">Fastapi Template</div>
+            <div className="text-xl font-bold text-blue-600">NEPSIM</div>
             <div className="flex items-center gap-4">
+              <Link href="/dashboard">
+                <Button variant="ghost">Continue offline</Button>
+              </Link>
               <Link href="/login">
-                <Button variant="ghost">Sign in</Button>
+                <Button variant="ghost">Sync</Button>
               </Link>
               <Link href="/signup">
-                <Button>Get Started</Button>
+                <Button>Sign up to sync</Button>
               </Link>
             </div>
           </div>
@@ -62,21 +75,21 @@ export default function Home() {
         <section className="py-20 px-4 sm:px-6 lg:px-8">
           <div className="max-w-4xl mx-auto text-center">
             <h1 className="text-4xl sm:text-5xl font-bold text-gray-900 mb-6">
-              Modern Fastapi Template Platform
+              NEPSIM works offline first
             </h1>
             <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
-              A powerful, scalable Fastapi Template solution built with Next.js and Fastapi REST API.
-              Multi-tenant, secure, and ready for production.
+              Use the simulator, portfolio, watchlist, and Gemini features without logging in.
+              Sign in only when you want to sync your device data across devices.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Link href="/signup">
+              <Link href="/dashboard">
                 <Button size="lg" className="w-full sm:w-auto">
-                  Start Free Trial
+                  Continue Offline
                 </Button>
               </Link>
-              <Link href="/login">
+              <Link href="/signup">
                 <Button variant="outline" size="lg" className="w-full sm:w-auto">
-                  Sign In
+                  Create Sync Account
                 </Button>
               </Link>
             </div>
@@ -85,10 +98,10 @@ export default function Home() {
 
         <section className="py-20 px-4 sm:px-6 lg:px-8 bg-white">
           <div className="max-w-7xl mx-auto">
-            <h2 className="text-3xl font-bold text-center text-gray-900 mb-12">
-              Everything You Need
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+              <h2 className="text-3xl font-bold text-center text-gray-900 mb-12">
+                Everything You Need
+              </h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
               {features.map((feature) => (
                 <div
                   key={feature.title}
@@ -109,10 +122,10 @@ export default function Home() {
           <div className="max-w-3xl mx-auto text-center">
             <h2 className="text-3xl font-bold text-gray-900 mb-4">Ready to Get Started?</h2>
             <p className="text-lg text-gray-600 mb-8">
-              Join thousands of businesses already using our platform.
+              Start locally now, then sign in later whenever you want to sync securely.
             </p>
             <Link href="/signup">
-              <Button size="lg">Create Your Account</Button>
+              <Button size="lg">Create Sync Account</Button>
             </Link>
           </div>
         </section>

@@ -1,4 +1,0 @@
-# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/multitenancy/api/v1/tenant.py
-# hypothesis_version: 6.151.9
-
-[100, 120, '/', '/invitations/accept', '/{tenant_id}', '/{tenant_id}/members', 'Invitation not found', 'Member not found', 'Slug already taken', 'Tenant not found', 'invitee_email', 'removed_user_id', 'role', 'tenant_id', 'tenant_name', 'tenant_slug']

@@ -3,9 +3,11 @@
 'use client';
 
 import { useAuthStore } from '@/store/auth-store';
+import { hasStoredAuthTokens } from '@/lib/api-client';
+import { getOfflineGuestUser, getOfflineSyncSettings } from '@/lib/offline-data';
 import { useNotifications } from '@/hooks/use-notifications';
 import { useTokens } from '@/hooks/use-tokens';
-import { useSimulations } from '@/hooks';
+import { useSimulations } from '@/hooks/useSimulator';
 import { useAllNepseQuotes } from '@/hooks/useMarket';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { 
@@ -18,9 +20,12 @@ import { Button } from '@/components/ui/button';
 
 export default function DashboardPage() {
   const { user } = useAuthStore();
+  const isAuthenticated = hasStoredAuthTokens();
+  const effectiveUser = user ?? getOfflineGuestUser();
+  const syncSettings = getOfflineSyncSettings();
   const { data: notifData, isLoading: loadingNotifs } = useNotifications({ limit: 5 });
-  const { data: tokenData } = useTokens({ limit: 1 });
-  const { data: simulations } = useSimulations({ limit: 1 });
+  const { data: tokenData } = useTokens({ limit: 1 }, { enabled: isAuthenticated });
+  const { data: simulations } = useSimulations();
   const { data: stocksData, isLoading: loadingStocks } = useAllNepseQuotes();
 
   const recentNotifs = notifData?.items ?? [];
@@ -32,22 +37,22 @@ export default function DashboardPage() {
       name: 'Unread Notifications',
       value: String(unreadCount),
       icon: Bell,
-      href: '/notifications',
+      href: isAuthenticated ? '/notifications' : '/settings',
       color: 'text-blue-600 bg-blue-50',
     },
     {
-      name: 'Active Sessions',
-      value: String(activeSessions),
+      name: isAuthenticated ? 'Active Sessions' : 'Sync Status',
+      value: isAuthenticated ? String(activeSessions) : syncSettings.lastSyncAt ? 'Synced' : 'Local only',
       icon: Key,
-      href: '/tokens',
+      href: isAuthenticated ? '/tokens' : '/settings',
       color: 'text-purple-600 bg-purple-50',
     },
     {
-      name: '2FA Status',
-      value: user?.otp_enabled ? 'Enabled' : 'Disabled',
+      name: isAuthenticated ? '2FA Status' : 'Mode',
+      value: isAuthenticated ? (effectiveUser?.otp_enabled ? 'Enabled' : 'Disabled') : 'Offline',
       icon: Shield,
-      href: '/profile',
-      color: user?.otp_enabled ? 'text-green-600 bg-green-50' : 'text-yellow-600 bg-yellow-50',
+      href: isAuthenticated ? '/profile' : '/settings',
+      color: isAuthenticated && effectiveUser?.otp_enabled ? 'text-green-600 bg-green-50' : 'text-yellow-600 bg-yellow-50',
     },
   ];
 
@@ -56,7 +61,9 @@ export default function DashboardPage() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
         <p className="text-gray-500">
-          Welcome back{user?.first_name ? `, ${user.first_name}` : user?.username ? `, ${user.username}` : ''}!
+          {isAuthenticated
+            ? `Welcome back${effectiveUser?.first_name ? `, ${effectiveUser.first_name}` : effectiveUser?.username ? `, ${effectiveUser.username}` : ''}!`
+            : 'Your offline workspace is ready. Everything stays on this device until you choose to sync.'}
         </p>
       </div>
 
@@ -97,8 +104,11 @@ export default function DashboardPage() {
               <div className="flex flex-col md:flex-row items-center gap-8">
                 <div className="flex-1 space-y-4">
                   <div>
-                    <p className="text-sm text-gray-500">Current Balance</p>
-                    <p className="text-3xl font-bold text-gray-900">Rs. {(simulations![0].current_balance ?? 0).toLocaleString()}</p>
+                    <p className="text-sm text-gray-500">Session P&amp;L</p>
+                    <p className="text-3xl font-bold text-gray-900">
+                      {(simulations![0].total_pnl_pct ?? 0) >= 0 ? '+' : ''}
+                      {(simulations![0].total_pnl_pct ?? 0).toFixed(2)}%
+                    </p>
                   </div>
                   <div className="flex gap-4">
                     <div className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full text-sm font-medium border border-emerald-100 flex items-center gap-1.5">
@@ -256,7 +266,7 @@ export default function DashboardPage() {
       </div>
 
 
-      {!user?.is_confirmed && (
+      {isAuthenticated && !effectiveUser?.is_confirmed && (
         <Card className="border-yellow-200 bg-yellow-50">
           <CardContent className="pt-6">
             <div className="flex items-start gap-3">
@@ -272,7 +282,7 @@ export default function DashboardPage() {
         </Card>
       )}
 
-      {!user?.otp_enabled && (
+      {isAuthenticated && !effectiveUser?.otp_enabled && (
         <Card className="border-orange-200 bg-orange-50">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">

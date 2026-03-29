@@ -1,4 +1,0 @@
-# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/ai_analysis/api.py
-# hypothesis_version: 6.151.9
-
-[404, 500, '/learn/ai-insights', 'AI Analysis', 'message', 'task_id', 'what_you_did_right', 'what_you_did_wrong']

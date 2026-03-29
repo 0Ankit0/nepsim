@@ -4,6 +4,7 @@ from .token_tracking import TokenTracking
 from .used_token import UsedToken
 from .role import Role, Permission, UserRole, RolePermission
 from .casbin_rule import CasbinRule
+from .user_sync_settings import UserSyncSettings
 
 __all__ = [
     "User",
@@ -16,4 +17,5 @@ __all__ = [
     "UserRole",
     "RolePermission",
     "CasbinRule",
+    "UserSyncSettings",
 ]

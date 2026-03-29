@@ -1,4 +1,0 @@
-# file: /Users/ankit/Projects/Python/nepsim/backend/src/apps/iam/casbin_enforcer.py
-# hypothesis_version: 6.151.9
-
-['casbin_model.conf', 'global']
