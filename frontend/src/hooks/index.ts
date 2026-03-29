@@ -25,22 +25,6 @@ export {
 } from './use-notifications';
 
 export {
-  useTenants,
-  useTenant,
-  useCreateTenant,
-  useUpdateTenant,
-  useDeleteTenant,
-  useTenantMembers,
-  useUpdateMemberRole,
-  useRemoveMember,
-  useTenantInvitations,
-  useCreateInvitation,
-  useAcceptInvitation,
-  useDeleteInvitation,
-  useSwitchTenant,
-} from './use-tenants';
-
-export {
   usePaymentProviders,
   useInitiatePayment,
   useVerifyPayment,
@@ -57,29 +41,11 @@ export {
   useDeleteUser,
 } from './use-users';
 
-export {
-  useRoles,
-  useRole,
-  useCreateRole,
-  usePermissions,
-  useCreatePermission,
-  useUserRoles,
-  useAssignRole,
-  useRemoveRole,
-  useRolePermissions,
-  useAssignPermission,
-  useRemovePermission,
-  useCheckPermission,
-  useCasbinRoles,
-  useCasbinPermissions,
-} from './use-rbac';
-
 export { useTokens, useRevokeToken, useRevokeAllTokens } from './use-tokens';
 
 export {
   useWebSocket,
   useNotificationWebSocket,
-  useTenantWebSocket,
   useWSStats,
   useWSIsOnline,
 } from './use-websocket';

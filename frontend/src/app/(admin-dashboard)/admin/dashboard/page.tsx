@@ -4,11 +4,10 @@
 
 import { useListUsers } from '@/hooks/use-users';
 import { useTokens } from '@/hooks/use-tokens';
-import { useRoles } from '@/hooks/use-rbac';
 import { useStocks, useSimulations, useLessons } from '@/hooks';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { 
-  Users, Key, Shield, Activity, UserCheck, UserX, 
+  Users, Key, Activity, UserCheck, UserX,
   TrendingUp, PlayCircle, BookOpen, GraduationCap 
 } from 'lucide-react';
 import Link from 'next/link';
@@ -17,7 +16,6 @@ import { Skeleton } from '@/components/ui';
 export default function AdminDashboardPage() {
   const { data: usersData } = useListUsers({ limit: 1 });
   const { data: tokenData } = useTokens({ limit: 1 });
-  const { data: rolesData } = useRoles();
   const { data: stocks, isLoading: loadingStocks } = useStocks({ active_only: false });
   const { data: sims, isLoading: loadingSims } = useSimulations({ limit: 1 });
   const { data: curriculum, isLoading: loadingLearn } = useLessons();
@@ -64,7 +62,6 @@ export default function AdminDashboardPage() {
     { href: '/admin/simulator', icon: Activity, label: 'Simulations', desc: 'Monitor user trading', color: 'text-rose-400' },
     { href: '/admin/learn', icon: GraduationCap, label: 'Learn CMS', desc: 'Edit lessons & quizzes', color: 'text-amber-400' },
     { href: '/admin/users', icon: Users, label: 'Manage Users', desc: 'View, edit, delete users', color: 'text-indigo-400' },
-    { href: '/rbac', icon: Shield, label: 'Roles & Perms', desc: 'Manage access control', color: 'text-indigo-400' },
     { href: '/tokens', icon: Key, label: 'Active Sessions', desc: 'Monitor & revoke tokens', color: 'text-purple-400' },
   ];
 
@@ -146,9 +143,9 @@ export default function AdminDashboardPage() {
             >
               <div className="flex items-center gap-3">
                 <UserX className="h-5 w-5 text-red-400" />
-                <span className="text-sm text-slate-200">Manage Superusers</span>
+                <span className="text-sm text-slate-200">Manage Admin Access</span>
               </div>
-              <span className="text-xs text-slate-400">Edit roles</span>
+              <span className="text-xs text-slate-400">Edit users</span>
             </Link>
           </CardContent>
         </Card>

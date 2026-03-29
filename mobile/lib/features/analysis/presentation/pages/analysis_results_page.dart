@@ -136,6 +136,49 @@ class _SummaryTab extends StatelessWidget {
               ),
             ),
           ),
+          if ((analysis.tradeByTradeCommentary ?? []).isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Card(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Trade Commentary', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 12),
+                    ...analysis.tradeByTradeCommentary!.take(5).map((trade) => Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade50,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text('${trade.symbol} • ${trade.side.toUpperCase()}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                                    OutlinedButton(
+                                      onPressed: () => context.push('${AppConstants.stockDetailRoute}?symbol=${trade.symbol}&simId=${analysis.simulationId}'),
+                                      child: const Text('Go to Chart'),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Text(trade.commentary, style: const TextStyle(height: 1.4)),
+                              ],
+                            ),
+                          ),
+                        )),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );

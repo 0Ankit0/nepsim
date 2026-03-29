@@ -159,6 +159,50 @@ class SimulatorService:
         await db.refresh(sim)
         return sim
 
+    @staticmethod
+    async def pause_simulation(db: AsyncSession, simulation_id: int, user_id: int) -> Simulation:
+        sim = await SimulatorService.get_simulation(db, simulation_id, user_id)
+        if not sim or sim.status != SimulationStatus.ACTIVE:
+            raise ValueError("Simulation not found or not active.")
+
+        sim.status = SimulationStatus.PAUSED
+        sim.updated_at = datetime.now()
+        db.add(sim)
+        await db.commit()
+        await db.refresh(sim)
+        return sim
+
+    @staticmethod
+    async def resume_simulation(db: AsyncSession, simulation_id: int, user_id: int) -> Simulation:
+        sim = await SimulatorService.get_simulation(db, simulation_id, user_id)
+        if not sim or sim.status != SimulationStatus.PAUSED:
+            raise ValueError("Simulation not found or not paused.")
+
+        sim.status = SimulationStatus.ACTIVE
+        sim.updated_at = datetime.now()
+        db.add(sim)
+        await db.commit()
+        await db.refresh(sim)
+        return sim
+
+    @staticmethod
+    async def update_tick_config(
+        db: AsyncSession,
+        simulation_id: int,
+        user_id: int,
+        seconds_per_day: int,
+    ) -> Simulation:
+        sim = await SimulatorService.get_simulation(db, simulation_id, user_id)
+        if not sim or sim.status not in (SimulationStatus.ACTIVE, SimulationStatus.PAUSED):
+            raise ValueError("Simulation not found or not configurable.")
+
+        sim.seconds_per_day = seconds_per_day
+        sim.updated_at = datetime.now()
+        db.add(sim)
+        await db.commit()
+        await db.refresh(sim)
+        return sim
+
     # ── Portfolio ───────────────────────────────────────────────────────────
 
     @staticmethod

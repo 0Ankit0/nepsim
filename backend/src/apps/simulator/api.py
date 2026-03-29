@@ -13,7 +13,7 @@ from .models import Simulation, Trade
 from .schemas import (
     SimulationCreate, SimulationResponse, SimulationSummary,
     TradeRequest, TradeResponse, EndSimulationResponse,
-    PortfolioHolding,
+    PortfolioHolding, SimulationTickConfigUpdate,
 )
 from .services import (
     SimulatorService, InsufficientFundsError,
@@ -150,6 +150,46 @@ async def advance_day(
     """Advance the simulated market by one trading day."""
     try:
         sim = await SimulatorService.advance_day(db, simulation_id, current_user.id)
+        return sim
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/{simulation_id}/pause", response_model=SimulationResponse)
+async def pause_simulation(
+    simulation_id: int,
+    db: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        sim = await SimulatorService.pause_simulation(db, simulation_id, current_user.id)
+        return sim
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/{simulation_id}/resume", response_model=SimulationResponse)
+async def resume_simulation(
+    simulation_id: int,
+    db: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        sim = await SimulatorService.resume_simulation(db, simulation_id, current_user.id)
+        return sim
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.patch("/{simulation_id}/tick-config", response_model=SimulationResponse)
+async def update_tick_config(
+    simulation_id: int,
+    payload: SimulationTickConfigUpdate,
+    db: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        sim = await SimulatorService.update_tick_config(db, simulation_id, current_user.id, payload.seconds_per_day)
         return sim
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

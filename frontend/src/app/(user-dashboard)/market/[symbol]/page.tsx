@@ -32,21 +32,31 @@ import {
   formatCompactVolume,
   formatMoney,
   formatNumber,
+  toDateKey,
 } from '@/components/market-chart/data-utils';
 import { useNepseHistory, useNepseIndicators, useNepseQuote, useSymbols } from '@/hooks/useMarket';
-import { useExecuteTrade } from '@/hooks/useSimulator';
+import { useExecuteTrade, useSimulation } from '@/hooks/useSimulator';
+import type { HistoricDataRow } from '@/api/market';
 
 function SymbolDashboard({ symbol }: { symbol: string }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const simId = searchParams.get('simId');
+  const simulationId = simId ? Number.parseInt(simId, 10) : 0;
 
-  const { data: quote, isLoading: isQuoteLoading } = useNepseQuote(symbol);
-  const { data: history, isLoading: isHistoryLoading } = useNepseHistory(symbol, undefined, undefined, 5000);
-  const { data: indicatorHistory, isLoading: isIndicatorHistoryLoading } = useNepseIndicators(symbol, undefined, undefined, 5000);
+  const { data: sim } = useSimulation(simulationId || undefined);
+  const simulationDate = sim ? toDateKey(sim.current_sim_date) : undefined;
+  const { data: liveQuote, isLoading: isQuoteLoading } = useNepseQuote(symbol);
+  const { data: history, isLoading: isHistoryLoading } = useNepseHistory(symbol, undefined, simulationDate ?? undefined, 5000);
+  const { data: indicatorHistory, isLoading: isIndicatorHistoryLoading } = useNepseIndicators(
+    symbol,
+    undefined,
+    simulationDate ?? undefined,
+    5000
+  );
   const { data: symbols, isLoading: isSymbolsLoading } = useSymbols();
 
-  const executeTrade = useExecuteTrade(simId ? Number.parseInt(simId, 10) : 0);
+  const executeTrade = useExecuteTrade(simulationId);
 
   const [tradeQuantity, setTradeQuantity] = useState('10');
   const [symbolSearch, setSymbolSearch] = useState(symbol);
@@ -87,6 +97,37 @@ function SymbolDashboard({ symbol }: { symbol: string }) {
 
   const priceBars = useMemo(() => buildPriceBars(history?.data ?? []), [history?.data]);
   const indicators = useMemo(() => buildIndicatorHistory(indicatorHistory?.data ?? []), [indicatorHistory?.data]);
+  const simulatedQuote = useMemo(() => {
+    if (!simulationDate) {
+      return liveQuote;
+    }
+
+    const rows = [...(history?.data ?? [])].sort((left: HistoricDataRow, right: HistoricDataRow) =>
+      (toDateKey(left.date) ?? '').localeCompare(toDateKey(right.date) ?? '')
+    );
+    const latestRow = rows.length > 0 ? rows[rows.length - 1] : null;
+    if (!latestRow) {
+      return liveQuote;
+    }
+
+    return {
+      symbol,
+      date: latestRow.date,
+      ltp: latestRow.ltp ?? latestRow.close,
+      open: latestRow.open,
+      high: latestRow.high,
+      low: latestRow.low,
+      close: latestRow.close,
+      prev_close: latestRow.prev_close ?? null,
+      diff: latestRow.diff ?? null,
+      diff_pct: latestRow.diff_pct ?? null,
+      vwap: latestRow.vwap ?? null,
+      vol: latestRow.vol ?? null,
+      turnover: latestRow.turnover ?? null,
+      weeks_52_high: latestRow.weeks_52_high ?? null,
+      weeks_52_low: latestRow.weeks_52_low ?? null,
+    };
+  }, [history?.data, liveQuote, simulationDate, symbol]);
 
   const filteredPriceBars = useMemo(() => filterByRange(priceBars, chartSettings.range), [chartSettings.range, priceBars]);
   const filteredIndicators = useMemo(() => filterByRange(indicators, chartSettings.range), [chartSettings.range, indicators]);
@@ -128,6 +169,7 @@ function SymbolDashboard({ symbol }: { symbol: string }) {
       .slice(0, 8);
   }, [symbolSearch, symbols]);
 
+  const quote = simulatedQuote;
   const isUp = (quote?.diff_pct ?? 0) >= 0;
 
   const saveLayouts = (nextLayouts: SavedChartLayout[]) => {
@@ -341,6 +383,9 @@ function SymbolDashboard({ symbol }: { symbol: string }) {
             </span>
           </div>
           <p className="text-gray-500">Search symbols, switch durations, save layouts, and manage indicator panels directly on the chart.</p>
+          {simulationDate && (
+            <p className="text-xs font-medium text-indigo-600">Simulation view through {simulationDate}</p>
+          )}
         </div>
 
         {!isQuoteLoading && quote && (

@@ -3,31 +3,82 @@
 import { 
   useSimulation, 
   useAdvanceDay, 
-  useEndSimulation 
+  useEndSimulation,
+  usePauseSimulation,
+  useResumeSimulation,
+  useUpdateTickConfig,
 } from '@/hooks/useSimulator';
 import { useSymbols } from '@/hooks/useMarket';
+import { useTopStocks } from '@/hooks/useMarketAnalysis';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui';
 import { 
   Activity, BarChart3, Calendar, 
   DollarSign, FastForward, Clock,
-  Search, StopCircle, TrendingUp, TrendingDown,
-  ArrowUpRight, Wallet, History, ArrowRight
+  StopCircle, TrendingUp, TrendingDown,
+  ArrowUpRight, Wallet, ArrowRight, Pause, Play, Sparkles
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { use } from 'react';
+import { use, useEffect, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { simulatorApi } from '@/api/simulator';
 
 export default function TradingDashboardPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: rawId } = use(params);
   const id = parseInt(rawId);
   const { data: sim, isLoading } = useSimulation(id);
   const { data: symbols } = useSymbols();
+  const { data: topStocks } = useTopStocks(3, 'BUY');
   
   const advanceDay = useAdvanceDay(id);
   const endSimulation = useEndSimulation(id);
+  const pauseSimulation = usePauseSimulation(id);
+  const resumeSimulation = useResumeSimulation(id);
+  const updateTickConfig = useUpdateTickConfig(id);
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const [tickSeconds, setTickSeconds] = useState('10');
+
+  const suggestions = useMemo(
+    () => (topStocks?.results ?? []).filter((stock) => stock.symbol).slice(0, 3),
+    [topStocks?.results]
+  );
+
+  useEffect(() => {
+    if (!sim || (sim.status !== 'ended' && sim.status !== 'analysing' && sim.status !== 'analysis_ready')) {
+      return;
+    }
+
+    queryClient.prefetchQuery({
+      queryKey: ['simulation', id, 'analysis'],
+      queryFn: () => simulatorApi.getAiAnalysis(id),
+      retry: false,
+    }).catch(() => {
+      // Best-effort warmup so the analysis page can open with work already in flight.
+    });
+  }, [id, queryClient, sim]);
+
+  useEffect(() => {
+    if (!sim) {
+      return;
+    }
+
+    setTickSeconds(String(sim.seconds_per_day));
+  }, [sim]);
+
+  useEffect(() => {
+    if (!sim || sim.status !== 'active') {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      advanceDay.mutate();
+    }, Math.max(sim.seconds_per_day, 1) * 1000);
+
+    return () => window.clearInterval(interval);
+  }, [advanceDay, sim]);
 
   const handleEndSimulation = () => {
     if(confirm('Are you sure you want to end this simulation? You will receive AI analysis of your performance.')) {
@@ -42,10 +93,21 @@ export default function TradingDashboardPage({ params }: { params: Promise<{ id:
   if (isLoading) return <Skeleton className="h-[80vh] w-full" />;
   if (!sim) return <div className="text-center py-20 text-gray-500">Simulation not found.</div>;
 
-  const isEnded = sim.status === 'ended' || sim.status === 'analysing';
+  const isEnded = sim.status === 'ended' || sim.status === 'analysing' || sim.status === 'analysis_ready';
+  const isPaused = sim.status === 'paused';
   const totalValue = sim.total_value ?? sim.cash_balance;
   const totalPnl = sim.total_pnl_pct ?? 0;
   const isPositive = totalPnl >= 0;
+
+  const handleTickDurationSave = () => {
+    const seconds = Number.parseInt(tickSeconds, 10);
+    if (!Number.isFinite(seconds) || seconds < 1) {
+      window.alert('Enter a valid tick duration in seconds.');
+      return;
+    }
+
+    updateTickConfig.mutate(seconds);
+  };
 
   return (
     <div className="space-y-8 pb-10">
@@ -59,8 +121,24 @@ export default function TradingDashboardPage({ params }: { params: Promise<{ id:
           </div>
           <h1 className="text-2xl font-bold text-gray-900">{sim.name || 'Trading Dashboard'}</h1>
         </div>
+        {isEnded && (
+          <Link href={`/simulator/${id}/analysis`}>
+            <Button className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold">
+              View AI Analysis
+            </Button>
+          </Link>
+        )}
         {!isEnded && (
           <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              className="border-slate-200 text-slate-700 hover:bg-slate-50"
+              onClick={() => (isPaused ? resumeSimulation.mutate() : pauseSimulation.mutate())}
+              disabled={pauseSimulation.isPending || resumeSimulation.isPending}
+            >
+              {isPaused ? <Play className="h-4 w-4 mr-2" /> : <Pause className="h-4 w-4 mr-2" />}
+              {isPaused ? 'Resume' : 'Pause'}
+            </Button>
             <Button 
               variant="outline" 
               className="border-rose-200 text-rose-600 hover:bg-rose-50"
@@ -102,6 +180,40 @@ export default function TradingDashboardPage({ params }: { params: Promise<{ id:
           </Card>
         ))}
       </div>
+
+      {!isEnded && (
+        <Card className="border-gray-100 shadow-sm">
+          <CardContent className="flex flex-col gap-4 p-5 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-gray-500">Tick Controls</p>
+              <p className="mt-1 text-sm text-gray-600">
+                {isPaused
+                  ? 'Simulation is paused. You can review ideas and resume whenever you are ready.'
+                  : `The simulator advances one trading day every ${sim.seconds_per_day} seconds.`}
+              </p>
+            </div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+              <div>
+                <label htmlFor="tick-seconds" className="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  Seconds per tick
+                </label>
+                <input
+                  id="tick-seconds"
+                  type="number"
+                  min="1"
+                  max="300"
+                  value={tickSeconds}
+                  onChange={(event) => setTickSeconds(event.target.value)}
+                  className="w-32 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 outline-none focus:border-indigo-500"
+                />
+              </div>
+              <Button variant="outline" onClick={handleTickDurationSave} disabled={updateTickConfig.isPending}>
+                Save Tick Duration
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-8">
@@ -160,6 +272,47 @@ export default function TradingDashboardPage({ params }: { params: Promise<{ id:
         </div>
 
         <div className="space-y-8">
+            {!isEnded && isPaused && (
+                <Card className="border-amber-200 shadow-sm">
+                    <CardHeader className="bg-amber-50 border-b border-amber-100">
+                        <CardTitle className="text-sm flex items-center gap-2 text-amber-900">
+                            <Sparkles className="h-4 w-4 text-amber-600" />
+                            Stocks Worth Reviewing While Paused
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3 p-4">
+                        {suggestions.length === 0 ? (
+                            <p className="text-sm text-gray-500">No analysis suggestions available right now.</p>
+                        ) : (
+                            suggestions.map((stock) => (
+                                <div key={stock.symbol} className="rounded-xl border border-amber-100 bg-white p-4">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                            <p className="text-sm font-bold text-gray-900">{stock.symbol}</p>
+                                            <p className="mt-1 text-xs text-gray-500">{stock.signal.replaceAll('_', ' ')}</p>
+                                        </div>
+                                        <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-800">
+                                            {stock.overall_score.toFixed(0)}/100
+                                        </span>
+                                    </div>
+                                    <p className="mt-3 text-xs text-gray-600 line-clamp-3">
+                                        {(stock.key_signals ?? []).join(' • ') || 'Momentum and trend signals look constructive.'}
+                                    </p>
+                                    <div className="mt-4 flex gap-2">
+                                        <Link href={`/market/${stock.symbol}?simId=${id}`} className="flex-1">
+                                            <Button variant="outline" className="w-full">Open Chart</Button>
+                                        </Link>
+                                        <Link href={`/stock360`} className="flex-1">
+                                            <Button className="w-full bg-amber-600 hover:bg-amber-700 text-white">360 View</Button>
+                                        </Link>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </CardContent>
+                </Card>
+            )}
+
             {!isEnded && (
                 <Card className="border-indigo-100 shadow-lg shadow-indigo-100">
                     <CardHeader className="bg-indigo-600 text-white rounded-t-xl py-4">

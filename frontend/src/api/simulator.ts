@@ -1,6 +1,6 @@
 import { apiClient } from '@/lib/api-client';
 
-export type SimulationStatus = 'active' | 'paused' | 'ended' | 'analysing';
+export type SimulationStatus = 'active' | 'paused' | 'ended' | 'analysing' | 'analysis_ready';
 export type TradeSide = 'buy' | 'sell';
 export type TradeStatus = 'executed' | 'rejected';
 
@@ -24,6 +24,7 @@ export interface SimulationResponse {
   period_start: string;
   period_end: string;
   current_sim_date: string;
+  seconds_per_day: number;
   started_at: string;
   ended_at: string | null;
   portfolio_value: number | null;
@@ -38,6 +39,7 @@ export interface SimulationSummary {
   name: string | null;
   status: SimulationStatus;
   initial_capital: number;
+  seconds_per_day: number;
   started_at: string;
   ended_at: string | null;
   total_pnl: number | null;
@@ -160,6 +162,21 @@ export const simulatorApi = {
   // Advance the simulated day by 1
   advanceDay: async (simulationId: number): Promise<SimulationResponse> => {
     const { data } = await apiClient.post(`/simulations/${simulationId}/advance-day`);
+    return data;
+  },
+
+  pauseSimulation: async (simulationId: number): Promise<SimulationResponse> => {
+    const { data } = await apiClient.post(`/simulations/${simulationId}/pause`);
+    return data;
+  },
+
+  resumeSimulation: async (simulationId: number): Promise<SimulationResponse> => {
+    const { data } = await apiClient.post(`/simulations/${simulationId}/resume`);
+    return data;
+  },
+
+  updateTickConfig: async (simulationId: number, secondsPerDay: number): Promise<SimulationResponse> => {
+    const { data } = await apiClient.patch(`/simulations/${simulationId}/tick-config`, { seconds_per_day: secondsPerDay });
     return data;
   },
 

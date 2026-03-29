@@ -5,7 +5,9 @@ import '../../../../core/constants/app_constants.dart';
 import '../providers/market_provider.dart';
 
 class StockSearchPage extends ConsumerWidget {
-  const StockSearchPage({super.key});
+  final int? simulationId;
+
+  const StockSearchPage({super.key, this.simulationId});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -58,7 +60,8 @@ class StockSearchPage extends ConsumerWidget {
                   ),
                   trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
                   onTap: () {
-                    context.push('${AppConstants.stockDetailRoute}?symbol=$symbol');
+                    final simParam = simulationId != null ? '&simId=$simulationId' : '';
+                    context.push('${AppConstants.stockDetailRoute}?symbol=$symbol$simParam');
                   },
                 ),
               );

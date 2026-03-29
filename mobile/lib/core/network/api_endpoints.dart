@@ -60,6 +60,9 @@ class ApiEndpoints {
   static String simulationDetail(int id) => '/simulations/$id';
   static String simulationTrade(int id) => '/simulations/$id/trade';
   static String simulationAdvanceDay(int id) => '/simulations/$id/advance-day';
+  static String simulationPause(int id) => '/simulations/$id/pause';
+  static String simulationResume(int id) => '/simulations/$id/resume';
+  static String simulationTickConfig(int id) => '/simulations/$id/tick-config';
   static String simulationEnd(int id) => '/simulations/$id/end';
   static String simulationTrades(int id) => '/simulations/$id/trades';
 

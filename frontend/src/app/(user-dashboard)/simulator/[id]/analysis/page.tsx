@@ -3,11 +3,9 @@
 import { useSimulationAnalysis, useSimulation } from '@/hooks/useSimulator';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui';
 import { 
-  Brain, CheckCircle2, AlertTriangle, Target, 
-  ArrowLeft, Star, TrendingUp, TrendingDown,
-  Info, BarChart3, Clock, Zap, MessageSquare
+  Brain, CheckCircle2, AlertTriangle, Target,
+  ArrowLeft, BarChart3, Zap, MessageSquare
 } from 'lucide-react';
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
@@ -61,7 +59,6 @@ export default function AIAnalysisPage({ params }: { params: { id: string } }) {
 
   const scores = [analysis.timing_score, analysis.selection_score, analysis.risk_score, analysis.patience_score].filter(s => s != null) as number[];
   const rating = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
-  const ratingColor = rating >= 80 ? 'text-emerald-500' : rating >= 50 ? 'text-amber-500' : 'text-rose-500';
 
   return (
     <div className="max-w-6xl mx-auto space-y-8 pb-20 mt-4">
@@ -69,6 +66,18 @@ export default function AIAnalysisPage({ params }: { params: { id: string } }) {
         <ArrowLeft className="h-4 w-4" />
         Back to Simulation {id}
       </Link>
+
+      <div className="flex flex-col gap-3 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">AI Trading Analysis</h1>
+          <p className="mt-1 text-sm text-gray-500">
+            {sim?.name ? `${sim.name} · ` : ''}Detailed feedback, missed opportunities, and symbol-level commentary.
+          </p>
+        </div>
+        <Link href={`/simulator/${id}`}>
+          <Button variant="outline">Open Dashboard</Button>
+        </Link>
+      </div>
 
       <div className="flex flex-col md:flex-row gap-8 items-start">
         {/* Left Column: Summary & Rating */}
@@ -198,6 +207,14 @@ export default function AIAnalysisPage({ params }: { params: { id: string } }) {
                                         <div className="text-lg font-black text-indigo-600">{comm.quality_score}/100</div>
                                     </div>
                                 )}
+                            </div>
+                            <div className="mb-4 flex justify-end">
+                                <Link href={`/market/${encodeURIComponent(comm.symbol)}?simId=${id}`}>
+                                    <Button variant="outline" size="sm" className="gap-2">
+                                        <BarChart3 className="h-4 w-4" />
+                                        Go to {comm.symbol} Chart
+                                    </Button>
+                                </Link>
                             </div>
                             <div className="bg-gray-50 rounded-lg p-4 relative">
                                 <div className="absolute -left-2 top-4 w-4 h-4 bg-gray-50 rotate-45" />

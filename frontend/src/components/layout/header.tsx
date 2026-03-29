@@ -22,7 +22,7 @@ function useClickOutside(ref: React.RefObject<HTMLElement | null>, handler: () =
 
 export function Header() {
   const { logout } = useAuth();
-  const { user, tenant } = useAuthStore();
+  const { user } = useAuthStore();
 
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -52,14 +52,7 @@ export function Header() {
   return (
     <header className="fixed top-0 left-64 right-0 z-10 h-16 bg-white border-b border-gray-200">
       <div className="flex h-full items-center justify-between px-6">
-        {/* Left: tenant name */}
-        <div className="flex items-center gap-2">
-          {tenant && (
-            <span className="text-sm text-gray-500">
-              Organization: <span className="font-medium text-gray-900">{tenant.name}</span>
-            </span>
-          )}
-        </div>
+        <div />
 
         <div className="flex items-center gap-3">
           <LanguageSwitcher />

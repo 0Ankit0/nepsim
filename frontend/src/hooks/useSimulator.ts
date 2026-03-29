@@ -61,6 +61,40 @@ export const useAdvanceDay = (id: number) => {
     mutationFn: () => simulatorApi.advanceDay(id),
     onSuccess: (updatedSim) => {
       queryClient.setQueryData(['simulation', id], updatedSim);
+      queryClient.invalidateQueries({ queryKey: ['simulations'] });
+    },
+  });
+};
+
+export const usePauseSimulation = (id: number) => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => simulatorApi.pauseSimulation(id),
+    onSuccess: (updatedSim) => {
+      queryClient.setQueryData(['simulation', id], updatedSim);
+      queryClient.invalidateQueries({ queryKey: ['simulations'] });
+    },
+  });
+};
+
+export const useResumeSimulation = (id: number) => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => simulatorApi.resumeSimulation(id),
+    onSuccess: (updatedSim) => {
+      queryClient.setQueryData(['simulation', id], updatedSim);
+      queryClient.invalidateQueries({ queryKey: ['simulations'] });
+    },
+  });
+};
+
+export const useUpdateTickConfig = (id: number) => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (secondsPerDay: number) => simulatorApi.updateTickConfig(id, secondsPerDay),
+    onSuccess: (updatedSim) => {
+      queryClient.setQueryData(['simulation', id], updatedSim);
+      queryClient.invalidateQueries({ queryKey: ['simulations'] });
     },
   });
 };

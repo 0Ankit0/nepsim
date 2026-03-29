@@ -6,10 +6,8 @@ import {
   Home,
   Bell,
   Settings,
-  Building2,
   User,
   CreditCard,
-  Shield,
   Key,
   TrendingUp,
   Activity,
@@ -19,7 +17,6 @@ import {
   BarChart3,
   ScanSearch,
 } from 'lucide-react';
-import { OrgSwitcher } from './org-switcher';
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: Home },
@@ -31,10 +28,8 @@ const navigation = [
   { name: 'Simulator', href: '/simulator', icon: Activity },
   { name: 'Learn', href: '/learn', icon: GraduationCap },
   { name: 'Profile', href: '/profile', icon: User },
-  { name: 'Tenants', href: '/tenants', icon: Building2 },
   { name: 'Payments', href: '/finances', icon: CreditCard },
   { name: 'Notifications', href: '/notifications', icon: Bell },
-  { name: 'Roles & Permissions', href: '/rbac', icon: Shield },
   { name: 'Active Sessions', href: '/tokens', icon: Key },
   { name: 'Settings', href: '/settings', icon: Settings },
 ];
@@ -50,8 +45,7 @@ export function Sidebar() {
           FastAPI Template
         </Link>
       </div>
-      <OrgSwitcher />
-      <nav className="flex flex-col gap-1 p-4 pt-0">
+      <nav className="flex flex-col gap-1 p-4">
         {navigation.map((item) => {
           const isActive =
             pathname === item.href || pathname.startsWith(`${item.href}/`);

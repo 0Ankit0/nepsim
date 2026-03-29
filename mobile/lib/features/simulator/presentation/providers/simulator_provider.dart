@@ -30,6 +30,30 @@ class SimulatorListNotifier extends AsyncNotifier<List<SimulationSummary>> {
     ref.invalidate(simulationDetailProvider(simulationId));
     return updated;
   }
+
+  Future<SimulationResponse> pauseSimulation(int simulationId) async {
+    final repo = ref.read(simulatorRepositoryProvider);
+    final updated = await repo.pauseSimulation(simulationId);
+    ref.invalidate(simulationDetailProvider(simulationId));
+    ref.invalidateSelf();
+    return updated;
+  }
+
+  Future<SimulationResponse> resumeSimulation(int simulationId) async {
+    final repo = ref.read(simulatorRepositoryProvider);
+    final updated = await repo.resumeSimulation(simulationId);
+    ref.invalidate(simulationDetailProvider(simulationId));
+    ref.invalidateSelf();
+    return updated;
+  }
+
+  Future<SimulationResponse> updateTickConfig(int simulationId, int secondsPerDay) async {
+    final repo = ref.read(simulatorRepositoryProvider);
+    final updated = await repo.updateTickConfig(simulationId, secondsPerDay);
+    ref.invalidate(simulationDetailProvider(simulationId));
+    ref.invalidateSelf();
+    return updated;
+  }
 }
 
 /// Detail provider — pages watch this; invalidated by [SimulatorListNotifier.advanceDay].

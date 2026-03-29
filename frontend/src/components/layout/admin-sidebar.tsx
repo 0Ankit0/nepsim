@@ -5,16 +5,13 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard,
   Users,
-  Shield,
   Settings,
   Activity,
 } from 'lucide-react';
-import { OrgSwitcher } from './org-switcher';
 
 const adminNavigation = [
   { name: 'Admin Dashboard', href: '/admin/dashboard', icon: LayoutDashboard },
   { name: 'Manage Users', href: '/admin/users', icon: Users },
-  { name: 'Roles & Permissions', href: '/rbac', icon: Shield },
   { name: 'Active Sessions', href: '/tokens', icon: Activity },
   { name: 'Settings', href: '/settings', icon: Settings },
 ];
@@ -29,8 +26,7 @@ export function AdminSidebar() {
           Admin Panel
         </Link>
       </div>
-      <OrgSwitcher />
-      <nav className="flex flex-col gap-1 p-4 pt-0">
+      <nav className="flex flex-col gap-1 p-4">
         <div className="mb-2 px-3 py-1 text-xs font-semibold text-indigo-400 uppercase tracking-wider">
           Administration
         </div>

@@ -22,6 +22,11 @@ final topStocksProvider = FutureProvider<TopStocksResponse>((ref) async {
   return ref.watch(marketAnalysisRepositoryProvider).getTopStocks(signal: signal);
 });
 
+final topStocksBySignalProvider =
+    FutureProvider.family<TopStocksResponse, String?>((ref, signal) async {
+  return ref.watch(marketAnalysisRepositoryProvider).getTopStocks(signal: signal);
+});
+
 final marketOverviewProvider = FutureProvider<MarketOverviewResponse>((ref) async {
   return ref.watch(marketAnalysisRepositoryProvider).getMarketOverview();
 });

@@ -40,6 +40,24 @@ class SimulatorRepository {
     return SimulationResponse.fromJson(response.data);
   }
 
+  Future<SimulationResponse> pauseSimulation(int id) async {
+    final response = await _dio.post(ApiEndpoints.simulationPause(id));
+    return SimulationResponse.fromJson(response.data);
+  }
+
+  Future<SimulationResponse> resumeSimulation(int id) async {
+    final response = await _dio.post(ApiEndpoints.simulationResume(id));
+    return SimulationResponse.fromJson(response.data);
+  }
+
+  Future<SimulationResponse> updateTickConfig(int id, int secondsPerDay) async {
+    final response = await _dio.patch(
+      ApiEndpoints.simulationTickConfig(id),
+      data: {'seconds_per_day': secondsPerDay},
+    );
+    return SimulationResponse.fromJson(response.data);
+  }
+
   Future<EndSimulationResponse> endSimulation(int id) async {
     final response = await _dio.post(ApiEndpoints.simulationEnd(id));
     return EndSimulationResponse.fromJson(response.data);

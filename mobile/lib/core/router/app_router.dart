@@ -193,18 +193,22 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppConstants.paymentsRoute,
         builder: (context, state) => const PaymentsPage(),
       ),
-      GoRoute(
-        path: AppConstants.stockSearchRoute,
-        builder: (context, state) => const StockSearchPage(),
-        routes: [
-          GoRoute(
-            path: 'detail',
-            builder: (context, state) {
-              final symbol = state.uri.queryParameters['symbol'] ?? '';
-              return StockDetailPage(symbol: symbol);
-            },
-          ),
-        ],
+              GoRoute(
+                path: AppConstants.stockSearchRoute,
+                builder: (context, state) {
+                  final simId = int.tryParse(state.uri.queryParameters['simId'] ?? '');
+                  return StockSearchPage(simulationId: simId);
+                },
+                routes: [
+                  GoRoute(
+                    path: 'detail',
+                    builder: (context, state) {
+                      final symbol = state.uri.queryParameters['symbol'] ?? '';
+                      final simId = int.tryParse(state.uri.queryParameters['simId'] ?? '');
+                      return StockDetailPage(symbol: symbol, simulationId: simId);
+                    },
+                  ),
+                ],
       ),
       GoRoute(
         path: AppConstants.achievementsRoute,

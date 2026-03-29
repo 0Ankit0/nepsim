@@ -14,7 +14,6 @@ from src.apps.core.handler import rate_limit_exceeded_handler
 from src.apps.core.middleware import SecurityHeadersMiddleware
 from src.apps.iam.api import api_router
 from src.apps.finance.api import finance_router
-from src.apps.multitenancy.api import multitenancy_router
 from src.db.session import engine, init_db
 from src.apps.iam.casbin_enforcer import CasbinEnforcer
 from src.apps.websocket.api import ws_router
@@ -118,7 +117,6 @@ if not settings.DEBUG:
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
 app.include_router(finance_router, prefix=settings.API_V1_STR)
-app.include_router(multitenancy_router, prefix=settings.API_V1_STR)
 app.include_router(ws_router, prefix=settings.API_V1_STR)
 app.include_router(notification_router, prefix=settings.API_V1_STR)
 app.include_router(analytics_router, prefix=settings.API_V1_STR)

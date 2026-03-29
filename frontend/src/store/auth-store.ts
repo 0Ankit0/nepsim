@@ -1,15 +1,13 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { User, Tenant } from '@/types';
+import type { User } from '@/types';
 
 interface AuthState {
   user: User | null;
-  tenant: Tenant | null;
   isAuthenticated: boolean;
   _hasHydrated: boolean;
   setUser: (user: User | null) => void;
   setTokens: (access: string, refresh: string) => void;
-  setTenant: (tenant: Tenant | null) => void;
   logout: () => void;
   setHasHydrated: (state: boolean) => void;
 }
@@ -18,7 +16,6 @@ export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
       user: null,
-      tenant: null,
       isAuthenticated: false,
       _hasHydrated: false,
       setUser: (user) => set({ user, isAuthenticated: !!user }),
@@ -28,15 +25,12 @@ export const useAuthStore = create<AuthState>()(
           localStorage.setItem('refresh_token', refresh);
         }
       },
-      setTenant: (tenant) => {
-        set({ tenant });
-      },
       logout: () => {
         if (typeof window !== 'undefined') {
           localStorage.removeItem('access_token');
           localStorage.removeItem('refresh_token');
         }
-        set({ user: null, tenant: null, isAuthenticated: false });
+        set({ user: null, isAuthenticated: false });
       },
       setHasHydrated: (state) => set({ _hasHydrated: state }),
     }),

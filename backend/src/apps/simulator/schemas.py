@@ -36,6 +36,7 @@ class SimulationResponse(BaseModel):
     period_start: datetime
     period_end: datetime
     current_sim_date: datetime
+    seconds_per_day: int
     started_at: datetime
     ended_at: Optional[datetime]
     # Enriched fields (computed by service)
@@ -54,6 +55,7 @@ class SimulationSummary(BaseModel):
     name: Optional[str]
     status: SimulationStatus
     initial_capital: float
+    seconds_per_day: int
     started_at: datetime
     ended_at: Optional[datetime]
     total_pnl: Optional[float] = None
@@ -99,3 +101,7 @@ class EndSimulationResponse(BaseModel):
     status: SimulationStatus
     message: str
     analysis_task_id: Optional[str] = None
+
+
+class SimulationTickConfigUpdate(BaseModel):
+    seconds_per_day: int = Field(ge=1, le=300, description="Real seconds per simulated trading day")

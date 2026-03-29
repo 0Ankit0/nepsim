@@ -1,13 +1,15 @@
 'use client';
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { createChart, ColorType, IChartApi, CandlestickSeries, LineSeries } from 'lightweight-charts';
+import React, { useMemo, useState } from 'react';
 import { Search, TrendingUp, TrendingDown, Minus, AlertCircle, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useStock360View } from '@/hooks/useMarketAnalysis';
 import type { IndicatorSignal, SimilarPeriod, PricePoint } from '@/api/marketAnalysis';
+import { MarketChartCanvas } from '@/components/market-chart/chart-canvas';
+import { DEFAULT_LAYOUT_SETTINGS, type ChartStyle, type ChartRange, type PriceBar } from '@/components/market-chart/chart-config';
+import { toDateKey } from '@/components/market-chart/data-utils';
 
 // ─── Signal helpers ───────────────────────────────────────────────────────────
 
@@ -43,108 +45,114 @@ const fmtVol = (v?: number) => {
 
 // ─── Chart component ──────────────────────────────────────────────────────────
 
-type ChartMode = 'candle' | 'line';
-type TimeRange = '1M' | '3M' | '6M' | '1Y' | 'ALL';
+const PRICE_HISTORY_RANGES: ChartRange[] = ['1M', '3M', '6M', '1Y', 'ALL'];
 
-function PriceChart({ history, symbol }: { history: PricePoint[]; symbol: string }) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<IChartApi | null>(null);
-  const [mode, setMode] = useState<ChartMode>('candle');
-  const [range, setRange] = useState<TimeRange>('1Y');
+function buildPriceHistoryBars(history: PricePoint[]): PriceBar[] {
+  const uniqueRows = new Map<string, PriceBar>();
+  const sortedRows = [...history].sort((left, right) => (toDateKey(left.date) ?? '').localeCompare(toDateKey(right.date) ?? ''));
 
-  const filteredHistory = useCallback(() => {
-    if (range === 'ALL') return history;
-    const days: Record<TimeRange, number> = { '1M': 30, '3M': 90, '6M': 180, '1Y': 365, ALL: 9999 };
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - days[range]);
-    return history.filter(p => new Date(p.date) >= cutoff);
-  }, [history, range]);
+  for (const row of sortedRows) {
+    const date = toDateKey(row.date);
+    const close = row.close ?? row.ltp;
 
-  useEffect(() => {
-    if (!containerRef.current) return;
-    if (chartRef.current) {
-      chartRef.current.remove();
-      chartRef.current = null;
+    if (!date || row.open == null || row.high == null || row.low == null || close == null) {
+      continue;
     }
 
-    const chart = createChart(containerRef.current, {
-      layout: { background: { type: ColorType.Solid, color: '#ffffff' }, textColor: '#374151' },
-      grid: { vertLines: { color: '#f3f4f6' }, horzLines: { color: '#f3f4f6' } },
-      rightPriceScale: { borderColor: '#e5e7eb' },
-      timeScale: { borderColor: '#e5e7eb', timeVisible: true },
-      width: containerRef.current.clientWidth,
-      height: 380,
+    uniqueRows.set(date, {
+      date,
+      time: date,
+      open: row.open,
+      high: row.high,
+      low: row.low,
+      close,
+      volume: row.vol ?? 0,
     });
-    chartRef.current = chart;
+  }
 
-    const data = filteredHistory();
+  return Array.from(uniqueRows.values()).sort((left, right) => left.date.localeCompare(right.date));
+}
 
-    if (mode === 'candle') {
-      const series = chart.addSeries(CandlestickSeries, {
-        upColor: '#10b981', downColor: '#ef4444',
-        borderUpColor: '#10b981', borderDownColor: '#ef4444',
-        wickUpColor: '#10b981', wickDownColor: '#ef4444',
-      });
-      series.setData(
-        data
-          .filter(p => p.open && p.high && p.low && (p.ltp || p.close))
-          .map(p => ({
-            time: p.date as `${string}-${string}-${string}`,
-            open: p.open!,
-            high: p.high!,
-            low: p.low!,
-            close: p.ltp || p.close!,
-          }))
-      );
-    } else {
-      const series = chart.addSeries(LineSeries, { color: '#3b82f6', lineWidth: 2 });
-      series.setData(
-        data
-          .filter(p => p.ltp || p.close)
-          .map(p => ({ time: p.date as `${string}-${string}-${string}`, value: p.ltp || p.close! }))
-      );
-    }
+function filterPriceHistoryByRange(rows: PriceBar[], range: ChartRange): PriceBar[] {
+  if (rows.length === 0 || range === 'ALL') {
+    return rows;
+  }
 
-    chart.timeScale().fitContent();
+  const daysBackMap: Record<Exclude<ChartRange, '1D' | '2D' | '1W' | 'ALL'>, number> = {
+    '1M': 30,
+    '3M': 90,
+    '6M': 180,
+    '1Y': 365,
+  };
 
-    const handleResize = () => {
-      if (containerRef.current) chart.applyOptions({ width: containerRef.current.clientWidth });
-    };
-    window.addEventListener('resize', handleResize);
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      chart.remove();
-      chartRef.current = null;
-    };
-  }, [filteredHistory, mode]);
+  const daysBack = daysBackMap[range as keyof typeof daysBackMap];
+  if (!daysBack) {
+    return rows;
+  }
+
+  const anchor = new Date(rows[rows.length - 1].date);
+  if (Number.isNaN(anchor.getTime())) {
+    return rows;
+  }
+
+  const cutoff = new Date(anchor);
+  cutoff.setDate(cutoff.getDate() - daysBack);
+
+  return rows.filter((row) => {
+    const rowDate = new Date(row.date);
+    return !Number.isNaN(rowDate.getTime()) && rowDate >= cutoff;
+  });
+}
+
+function PriceChart({ history }: { history: PricePoint[] }) {
+  const [chartStyle, setChartStyle] = useState<ChartStyle>(DEFAULT_LAYOUT_SETTINGS.chartStyle);
+  const [range, setRange] = useState<ChartRange>('1Y');
+
+  const priceBars = useMemo(() => buildPriceHistoryBars(history), [history]);
+  const filteredPriceBars = useMemo(() => filterPriceHistoryByRange(priceBars, range), [priceBars, range]);
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex gap-1">
-          {(['candle', 'line'] as ChartMode[]).map(m => (
-            <button
-              key={m}
-              onClick={() => setMode(m)}
-              className={`px-3 py-1 rounded text-xs font-medium ${mode === m ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap gap-2">
+          {(['candlestick', 'line'] as ChartStyle[]).map((mode) => (
+            <Button
+              key={mode}
+              type="button"
+              size="sm"
+              variant={chartStyle === mode ? 'primary' : 'outline'}
+              onClick={() => setChartStyle(mode)}
             >
-              {m === 'candle' ? 'Candlestick' : 'Line'}
-            </button>
+              {mode === 'candlestick' ? 'Candles' : 'Line'}
+            </Button>
           ))}
         </div>
-        <div className="flex gap-1">
-          {(['1M', '3M', '6M', '1Y', 'ALL'] as TimeRange[]).map(r => (
-            <button
-              key={r}
-              onClick={() => setRange(r)}
-              className={`px-2 py-1 rounded text-xs font-medium ${range === r ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+        <div className="flex flex-wrap gap-2">
+          {PRICE_HISTORY_RANGES.map((nextRange) => (
+            <Button
+              key={nextRange}
+              type="button"
+              size="sm"
+              variant={range === nextRange ? 'primary' : 'outline'}
+              onClick={() => setRange(nextRange)}
             >
-              {r}
-            </button>
+              {nextRange}
+            </Button>
           ))}
         </div>
       </div>
-      <div ref={containerRef} className="w-full" />
+
+      <MarketChartCanvas
+        priceBars={filteredPriceBars}
+        indicators={[]}
+        settings={{
+          chartStyle,
+          range,
+          showVolume: true,
+          indicators: [],
+        }}
+        emptyMessage="No price history is available for this symbol yet."
+      />
     </div>
   );
 }
@@ -386,7 +394,7 @@ export default function Stock360Page() {
           <Card>
             <CardContent className="p-5">
               <h3 className="text-sm font-semibold text-gray-700 mb-4">Price History</h3>
-              <PriceChart history={data.price_history} symbol={data.symbol} />
+              <PriceChart history={data.price_history} />
             </CardContent>
           </Card>
 
