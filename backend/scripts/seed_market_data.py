@@ -142,151 +142,361 @@ async def seed_lessons(session):
     from src.apps.learn.models import Lesson, Quiz, QuizQuestion
     from sqlmodel import select
     import json
-
-    # Check if any lessons already exist
-    result = await session.execute(select(Lesson).limit(1))
-    if result.scalar_one_or_none():
-        print("ℹ️  Lessons already seeded. Skipping.")
-        return
-
     lessons_data = [
         {
             "title": "Introduction to NEPSE",
-            "section": "Introduction",
+            "section": "Foundations",
             "order_index": 1,
             "difficulty_level": "beginner",
-            "read_time_minutes": 5,
-            "content_html": """<h2>What is NEPSE?</h2>
-<p>The Nepal Stock Exchange (NEPSE) is Nepal's only stock exchange, established in 1993. It provides a platform for trading shares of publicly listed companies in Nepal.</p>
-<h3>Key Facts</h3>
+            "read_time_minutes": 12,
+            "content_html": """<h2>What is NEPSE and why do prices move?</h2>
+<p>The Nepal Stock Exchange (NEPSE) is the market where listed Nepali companies are bought and sold. Every chart in NEPSIM is a history of agreements between buyers and sellers.</p>
+<h3>Start with the big picture</h3>
 <ul>
-  <li>Located in Kathmandu, Nepal</li>
-  <li>Over 200 listed companies</li>
-  <li>Sectors: Banking, Insurance, Hydropower, Finance, Manufacturing</li>
-  <li>Trading hours: 11:00 AM – 3:00 PM (Sunday to Thursday)</li>
+  <li><strong>Price rises</strong> when buyers are willing to pay more than sellers asked before.</li>
+  <li><strong>Price falls</strong> when sellers accept lower prices to exit.</li>
+  <li><strong>Volume matters</strong> because it tells you whether many people agreed with the move.</li>
+  <li><strong>Time matters</strong> because a stock can look strong this month and weak on a longer chart.</li>
 </ul>
-<h3>How Trading Works</h3>
-<p>Stock prices fluctuate based on supply and demand. When more people want to buy a stock than sell it, the price rises. When more want to sell, the price falls.</p>
-<p>In NEPSE, the minimum trade unit is called a <strong>lot</strong>, typically consisting of 10 shares.</p>""",
+<h3>What a beginner should learn first</h3>
+<ol>
+  <li>How to read one candle.</li>
+  <li>How to spot trend: up, down, or sideways.</li>
+  <li>How to mark support and resistance.</li>
+  <li>How to decide entry, target, and stop before trading.</li>
+</ol>
+<h3>Simple example</h3>
+<p>Imagine ADBL trades around Rs. 240 for several days and then closes at Rs. 248 with stronger-than-usual volume. That move matters because buyers pushed the stock above its recent range with participation.</p>
+<h3>Practice by hand</h3>
+<ul>
+  <li>Open any simulator chart and write down the last three closes.</li>
+  <li>Ask whether price is moving up, down, or sideways.</li>
+  <li>Mark one place where price repeatedly stopped falling.</li>
+  <li>Mark one place where price repeatedly stopped rising.</li>
+</ul>""",
+        },
+        {
+            "title": "Trading Costs in NEPSE",
+            "section": "Foundations",
+            "order_index": 2,
+            "difficulty_level": "beginner",
+            "read_time_minutes": 8,
+            "content_html": """<h2>Trading costs change the quality of a setup</h2>
+<p>A chart may look attractive, but a small move is not enough if fees eat the reward. Beginners should learn this early.</p>
+<h3>Main costs</h3>
+<ul>
+  <li><strong>SEBON Fee</strong>: 0.015% of turnover</li>
+  <li><strong>Broker Commission</strong>: typically around 0.40%</li>
+  <li><strong>DP Charge</strong>: NPR 25 per transaction</li>
+</ul>
+<h3>Worked example</h3>
+<p>Buying 10 shares at NPR 1,200 means turnover is NPR 12,000. Add fees and your break-even point moves higher than the raw chart price suggests.</p>
+<h3>Why it matters</h3>
+<p>A weak trade with tiny upside often looks acceptable before costs and poor after costs. Strong ideas need enough room to justify risk and friction.</p>
+<h3>Practice by hand</h3>
+<ul>
+  <li>Pick one old trade from your simulation.</li>
+  <li>Write the approximate percentage move.</li>
+  <li>Ask whether that move was large enough to justify fees and risk.</li>
+</ul>""",
         },
         {
             "title": "Reading Candlestick Charts",
-            "section": "Chart Patterns",
+            "section": "Chartcraft",
             "order_index": 1,
             "difficulty_level": "beginner",
-            "read_time_minutes": 8,
-            "content_html": """<h2>Candlestick Charts</h2>
-<p>Candlestick charts are the most popular chart type among traders. Each candlestick represents one time period (e.g., one day) of price action.</p>
-<h3>Anatomy of a Candlestick</h3>
+            "read_time_minutes": 14,
+            "content_html": """<h2>How to read one candle at a time</h2>
+<p>A candlestick records four prices: open, high, low, and close. Before learning patterns, learn to read the message inside one candle.</p>
+<h3>Anatomy</h3>
 <ul>
-  <li><strong>Open</strong>: Price at the start of the period</li>
-  <li><strong>Close</strong>: Price at the end of the period</li>
-  <li><strong>High</strong>: Highest price during the period</li>
-  <li><strong>Low</strong>: Lowest price during the period</li>
+  <li><strong>Open</strong>: where the session began</li>
+  <li><strong>Close</strong>: where the session finished</li>
+  <li><strong>High</strong>: the highest traded price</li>
+  <li><strong>Low</strong>: the lowest traded price</li>
 </ul>
-<h3>Green vs Red Candles</h3>
-<p>A <strong>green candle</strong> means the close was higher than the open (price went up). A <strong>red candle</strong> means the close was lower than the open (price went down).</p>
-<p>The thin lines above and below the body are called <strong>wicks</strong> or <strong>shadows</strong>, showing the high and low extremes.</p>""",
+<h3>What candle shape tells you</h3>
+<ul>
+  <li><strong>Large green body</strong>: buyers controlled the session.</li>
+  <li><strong>Large red body</strong>: sellers controlled the session.</li>
+  <li><strong>Long lower wick</strong>: buyers defended lower prices.</li>
+  <li><strong>Long upper wick</strong>: sellers pushed price back down.</li>
+  <li><strong>Small body</strong>: indecision.</li>
+</ul>
+<h3>Worked example</h3>
+<p>If a stock opens at Rs. 500, drops to Rs. 488, rallies to Rs. 507, and closes at Rs. 505, that candle shows recovery from weakness. It becomes more meaningful if it forms near support.</p>
+<h3>Hand-based learning</h3>
+<ul>
+  <li>Pick five candles from any chart.</li>
+  <li>Label each one: buyer control, seller control, or indecision.</li>
+  <li>Then check the next two candles and see whether your reading added useful context.</li>
+</ul>""",
+        },
+        {
+            "title": "Support, Resistance, and Trendlines",
+            "section": "Chartcraft",
+            "order_index": 2,
+            "difficulty_level": "beginner",
+            "read_time_minutes": 13,
+            "content_html": """<h2>Mark the levels before you trust indicators</h2>
+<p>Support is an area where price repeatedly finds buyers. Resistance is an area where price repeatedly finds sellers. These are zones, not magic exact numbers.</p>
+<h3>What to look for</h3>
+<ul>
+  <li>Multiple touches near the same area</li>
+  <li>Strong rejection candles from the zone</li>
+  <li>Volume expansion when price finally breaks out</li>
+</ul>
+<h3>Trendlines</h3>
+<p>A rising trendline connects higher lows. A falling trendline connects lower highs. They help you organize price action and judge whether structure is improving or weakening.</p>
+<h3>Practice by hand</h3>
+<ol>
+  <li>Pick one chart and mark two support areas and two resistance areas.</li>
+  <li>Write whether the current price is near a useful level or in the middle of nowhere.</li>
+  <li>Only then reveal indicators.</li>
+</ol>""",
+        },
+        {
+            "title": "Reading Volume and Breakouts",
+            "section": "Chartcraft",
+            "order_index": 3,
+            "difficulty_level": "beginner",
+            "read_time_minutes": 10,
+            "content_html": """<h2>Volume shows whether a move has support</h2>
+<p>Breakouts are stronger when many participants join the move. Volume helps you judge whether price is moving with conviction or just drifting.</p>
+<h3>Healthy breakout checklist</h3>
+<ul>
+  <li>Price closes above resistance, not just intraday.</li>
+  <li>Volume is stronger than recent sessions.</li>
+  <li>The next candle does not immediately erase the breakout.</li>
+</ul>
+<h3>Hand-based learning</h3>
+<ul>
+  <li>Find one successful breakout and one failed breakout in old chart data.</li>
+  <li>Compare candle shape and volume on both days.</li>
+  <li>Write which setup you would trust more and why.</li>
+</ul>""",
+        },
+        {
+            "title": "Moving Averages and Trend Confirmation",
+            "section": "Indicators",
+            "order_index": 1,
+            "difficulty_level": "beginner",
+            "read_time_minutes": 11,
+            "content_html": """<h2>Use moving averages to simplify trend</h2>
+<p>Moving averages smooth noisy candles so you can judge trend faster. Short averages react quickly; long averages move slowly and show the bigger picture.</p>
+<h3>Common uses</h3>
+<ul>
+  <li><strong>SMA20</strong>: short-term direction</li>
+  <li><strong>SMA50</strong>: medium-term structure</li>
+  <li><strong>SMA200</strong>: long-term trend context</li>
+</ul>
+<h3>Practical reading</h3>
+<ul>
+  <li>Price above rising averages often supports a bullish trend.</li>
+  <li>Price below falling averages often supports a bearish trend.</li>
+  <li>Crossovers matter more when price structure agrees.</li>
+</ul>
+<h3>Practice by hand</h3>
+<ul>
+  <li>Choose a trending stock.</li>
+  <li>Write whether price is above or below SMA20 and SMA50.</li>
+  <li>Finish the sentence: "Trend looks healthy because..."</li>
+</ul>""",
         },
         {
             "title": "Understanding RSI",
             "section": "Indicators",
-            "order_index": 1,
-            "difficulty_level": "intermediate",
-            "read_time_minutes": 7,
-            "content_html": """<h2>Relative Strength Index (RSI)</h2>
-<p>The RSI is a momentum oscillator that measures the speed and change of price movements. It oscillates between 0 and 100.</p>
-<h3>Key Levels</h3>
-<ul>
-  <li><strong>Above 70</strong>: Overbought — the stock may be overvalued, potential selling opportunity</li>
-  <li><strong>Below 30</strong>: Oversold — the stock may be undervalued, potential buying opportunity</li>
-  <li><strong>50</strong>: Neutral zone</li>
-</ul>
-<h3>How to Use RSI on NEPSE</h3>
-<p>In NEPSE, stocks often spend longer in overbought territory during bull markets. Use RSI as one signal among many, not as a standalone buy/sell signal.</p>
-<p>A common strategy: buy when RSI drops below 30 and then rises back above 35 (confirming recovery).</p>""",
-        },
-        {
-            "title": "Trading Costs in NEPSE",
-            "section": "Introduction",
             "order_index": 2,
             "difficulty_level": "beginner",
-            "read_time_minutes": 4,
-            "content_html": """<h2>NEPSE Trading Costs</h2>
-<p>Every trade in NEPSE incurs fees. Understanding these costs is essential for profitable trading.</p>
-<h3>Fee Structure</h3>
+            "read_time_minutes": 10,
+            "content_html": """<h2>RSI is momentum, not prophecy</h2>
+<p>The Relative Strength Index (RSI) moves between 0 and 100 and summarizes recent momentum. It is useful when combined with structure, not when used blindly.</p>
+<h3>Quick guide</h3>
 <ul>
-  <li><strong>SEBON Fee</strong>: 0.015% of turnover (paid to the regulator)</li>
-  <li><strong>Broker Commission</strong>: Typically 0.40% of turnover</li>
-  <li><strong>DP Charge</strong>: NPR 25 per transaction (CDSC demat fee)</li>
+  <li><strong>Above 70</strong>: momentum is stretched upward</li>
+  <li><strong>Below 30</strong>: momentum is stretched downward</li>
+  <li><strong>Near 50</strong>: neutral</li>
 </ul>
-<h3>Example Calculation</h3>
-<p>Buying 10 shares of NABIL at NPR 1,200:</p>
+<h3>What beginners get wrong</h3>
+<p>RSI above 70 does not automatically mean "sell now." Strong trends can stay strong. Context matters.</p>
+<h3>Better use</h3>
 <ul>
-  <li>Turnover: NPR 12,000</li>
-  <li>SEBON fee: NPR 1.80</li>
-  <li>Broker fee: NPR 48.00</li>
-  <li>DP Charge: NPR 25.00</li>
-  <li><strong>Total cost: NPR 12,074.80</strong></li>
+  <li>Watch oversold RSI near support.</li>
+  <li>Watch overbought RSI during breakouts for strength, not just risk.</li>
+  <li>Compare RSI with price structure and volume.</li>
 </ul>
-<p>This means you need the price to rise more than 0.62% just to break even on a round-trip trade!</p>""",
+<h3>Practice by hand</h3>
+<ul>
+  <li>Mark the last three times RSI dropped below 35.</li>
+  <li>Write what price was doing at those moments.</li>
+  <li>Compare which one produced the best recovery and why.</li>
+</ul>""",
+        },
+        {
+            "title": "Building a Trade Plan",
+            "section": "Practice",
+            "order_index": 1,
+            "difficulty_level": "beginner",
+            "read_time_minutes": 12,
+            "content_html": """<h2>A trade plan protects you from impulsive decisions</h2>
+<p>A chart setup is only useful if you can define how you will act on it. A trade plan forces you to think before you click.</p>
+<h3>Your minimum checklist</h3>
+<ol>
+  <li><strong>Reason</strong>: why this stock?</li>
+  <li><strong>Entry</strong>: where will you enter?</li>
+  <li><strong>Stop</strong>: where is the idea clearly wrong?</li>
+  <li><strong>Target</strong>: where does reward justify risk?</li>
+</ol>
+<h3>Practice by hand</h3>
+<ul>
+  <li>Pause your simulation.</li>
+  <li>Choose one stock.</li>
+  <li>Write one sentence each for entry, stop, target, and reason.</li>
+  <li>Then decide whether the setup still feels attractive.</li>
+</ul>""",
+        },
+        {
+            "title": "Hand-Based Chart Practice",
+            "section": "Practice",
+            "order_index": 2,
+            "difficulty_level": "beginner",
+            "read_time_minutes": 15,
+            "content_html": """<h2>Train your eyes before you trust automation</h2>
+<p>The quickest way to improve is to annotate charts by hand. This lesson turns chart reading into a repeatable habit.</p>
+<h3>A 10-minute drill</h3>
+<ol>
+  <li>Hide indicators.</li>
+  <li>Mark trend.</li>
+  <li>Mark one support and one resistance zone.</li>
+  <li>Read the last three candles.</li>
+  <li>Write a trade plan.</li>
+  <li>Only then reveal indicators and compare.</li>
+</ol>
+<h3>Reflection prompts</h3>
+<ul>
+  <li>Was the chart trending or noisy?</li>
+  <li>Did volume support the move?</li>
+  <li>Was your stop placed where the idea truly breaks?</li>
+  <li>Would you still take the trade with larger size?</li>
+</ul>""",
         },
     ]
 
     quiz_data = [
         {
-            "lesson_idx": 0,  # NEPSE intro
+            "lesson_idx": 0,
             "questions": [
                 {
-                    "question_text": "What is the minimum trade unit in NEPSE called?",
-                    "options": ["Share", "Lot", "Bundle", "Unit"],
+                    "question_text": "What should a beginner usually mark before checking indicators?",
+                    "options": ["Broker fees only", "Support and resistance zones", "Rumors on social media", "Only the latest candle color"],
                     "correct_option_index": 1,
-                    "explanation": "In NEPSE, the minimum tradeable unit is called a 'lot', which typically consists of 10 shares.",
+                    "explanation": "Support and resistance give price context. Indicators become more useful after you understand where price sits on the chart.",
                 },
                 {
-                    "question_text": "What are NEPSE's trading days?",
-                    "options": ["Monday to Friday", "Saturday to Wednesday", "Sunday to Thursday", "All 7 days"],
-                    "correct_option_index": 2,
-                    "explanation": "NEPSE trades Sunday through Thursday, following Nepal's work week (Friday is a holiday in Nepal).",
+                    "question_text": "Why does volume matter during analysis?",
+                    "options": ["It replaces every other tool", "It shows participation and conviction", "It guarantees profit", "It tells you tomorrow's exact close"],
+                    "correct_option_index": 1,
+                    "explanation": "Volume helps you judge whether many market participants supported a move or whether price moved weakly.",
                 },
             ],
         },
         {
-            "lesson_idx": 1,  # Candlesticks
+            "lesson_idx": 1,
             "questions": [
                 {
-                    "question_text": "What does a green candlestick indicate?",
-                    "options": ["Price went down", "Price went up", "No price change", "High volatility"],
+                    "question_text": "Why should trading costs matter to a beginner?",
+                    "options": ["They only matter to institutions", "They affect whether a small move is truly profitable", "They replace stop losses", "They are not relevant in NEPSE"],
                     "correct_option_index": 1,
-                    "explanation": "A green candle means the closing price was higher than the opening price — the price increased during that period.",
-                },
-                {
-                    "question_text": "What do the wicks (shadows) of a candlestick represent?",
-                    "options": ["Open and close prices", "High and low extremes", "Volume of trades", "Moving averages"],
-                    "correct_option_index": 1,
-                    "explanation": "The wicks (thin lines above and below the body) show the highest and lowest prices reached during the candlestick's period.",
+                    "explanation": "Fees reduce net profit, so weak small moves often fail after trading costs are included.",
                 },
             ],
         },
         {
-            "lesson_idx": 2,  # RSI
+            "lesson_idx": 2,
             "questions": [
                 {
-                    "question_text": "An RSI reading above 70 typically indicates what?",
-                    "options": ["Oversold", "Overbought", "Neutral", "High volume"],
+                    "question_text": "What does a long lower wick often suggest?",
+                    "options": ["No buyers showed up", "Buyers stepped in after a sell-off", "Volume was zero", "The candle has no meaning"],
                     "correct_option_index": 1,
-                    "explanation": "An RSI above 70 suggests the stock is overbought — it may have risen too fast and could face a reversal.",
+                    "explanation": "A long lower wick shows price traded lower but buyers pushed it back up before the close.",
+                },
+                {
+                    "question_text": "What do candle wicks represent?",
+                    "options": ["Average broker fee", "High and low extremes", "Only the opening price", "Only the closing price"],
+                    "correct_option_index": 1,
+                    "explanation": "Wicks mark the highest and lowest traded prices during that candle's session.",
                 },
             ],
         },
         {
-            "lesson_idx": 3,  # Trading costs
+            "lesson_idx": 3,
             "questions": [
                 {
-                    "question_text": "What is the SEBON regulatory fee rate on NEPSE trades?",
-                    "options": ["0.015%", "0.40%", "0.10%", "0.025%"],
+                    "question_text": "Support and resistance are best treated as:",
+                    "options": ["Exact magic prices", "Flexible zones where price reacts", "Guaranteed reversal signals", "News announcements"],
+                    "correct_option_index": 1,
+                    "explanation": "Price often reacts within zones rather than at one exact rupee value.",
+                },
+            ],
+        },
+        {
+            "lesson_idx": 4,
+            "questions": [
+                {
+                    "question_text": "A healthier breakout usually includes:",
+                    "options": ["A close above resistance with stronger volume", "An immediate reversal into the range", "Very weak participation", "No defined resistance"],
                     "correct_option_index": 0,
-                    "explanation": "SEBON charges 0.015% of the total turnover value as a regulatory fee on each NEPSE transaction.",
+                    "explanation": "Breakouts are more trustworthy when price closes above resistance and volume supports the move.",
+                },
+            ],
+        },
+        {
+            "lesson_idx": 5,
+            "questions": [
+                {
+                    "question_text": "If price is above rising SMA20 and SMA50, it often suggests:",
+                    "options": ["Improving trend structure", "Guaranteed reversal", "Zero risk", "Only random movement"],
+                    "correct_option_index": 0,
+                    "explanation": "Price above rising moving averages often supports a bullish trend read, though it is never a guarantee.",
+                },
+            ],
+        },
+        {
+            "lesson_idx": 6,
+            "questions": [
+                {
+                    "question_text": "What does RSI above 70 usually mean?",
+                    "options": ["Momentum is stretched upward", "The stock must be sold instantly", "The trend is over", "There is no trend"],
+                    "correct_option_index": 0,
+                    "explanation": "RSI above 70 suggests strong recent upside momentum, but chart context still matters.",
+                },
+                {
+                    "question_text": "Which RSI setup is stronger for a beginner?",
+                    "options": ["RSI alone with no structure", "Oversold RSI near support with price stabilizing", "Any RSI reading above 50", "Ignoring price structure completely"],
+                    "correct_option_index": 1,
+                    "explanation": "RSI is more useful when it aligns with price structure like support or a recovering trend.",
+                },
+            ],
+        },
+        {
+            "lesson_idx": 7,
+            "questions": [
+                {
+                    "question_text": "A complete trade plan should include:",
+                    "options": ["Entry, stop, target, and the setup reason", "Only entry price", "Only a guess that price will rise", "Only one indicator reading"],
+                    "correct_option_index": 0,
+                    "explanation": "A real trade plan defines the setup, risk, and expected reward before the trade is placed.",
+                },
+            ],
+        },
+        {
+            "lesson_idx": 8,
+            "questions": [
+                {
+                    "question_text": "What is the goal of hand-based chart practice?",
+                    "options": ["To avoid ever using indicators again", "To train your eyes to read structure before relying on tools", "To memorize random candle names", "To make trading automatic"],
+                    "correct_option_index": 1,
+                    "explanation": "Manual chart work helps you build context and judgment before you lean on automated signals.",
                 },
             ],
         },
@@ -294,35 +504,49 @@ async def seed_lessons(session):
 
     created_lessons = []
     for lesson_data in lessons_data:
-        lesson = Lesson(**lesson_data)
-        session.add(lesson)
-        await session.flush()
+        result = await session.execute(select(Lesson).where(Lesson.title == lesson_data["title"]))
+        lesson = result.scalar_one_or_none()
+        if lesson:
+            for key, value in lesson_data.items():
+                setattr(lesson, key, value)
+        else:
+            lesson = Lesson(**lesson_data)
+            session.add(lesson)
+            await session.flush()
         created_lessons.append(lesson)
 
     await session.commit()
-    await session.refresh(created_lessons[0])  # Refresh to get IDs
+    for lesson in created_lessons:
+        await session.refresh(lesson)
 
-    # Add quizzes
     for quiz_info in quiz_data:
-        lesson_idx = quiz_info["lesson_idx"]
-        if lesson_idx < len(created_lessons):
-            lesson = created_lessons[lesson_idx]
+        lesson = created_lessons[quiz_info["lesson_idx"]]
+        result = await session.execute(select(Quiz).where(Quiz.lesson_id == lesson.id))
+        quiz = result.scalar_one_or_none()
+        if quiz:
+            quiz.title = f"Quiz: {lesson.title}"
+            quiz.passing_score = 70
+            questions_result = await session.execute(select(QuizQuestion).where(QuizQuestion.quiz_id == quiz.id))
+            for existing_question in questions_result.scalars().all():
+                await session.delete(existing_question)
+            await session.flush()
+        else:
             quiz = Quiz(lesson_id=lesson.id, title=f"Quiz: {lesson.title}", passing_score=70)
             session.add(quiz)
             await session.flush()
-            for order, q in enumerate(quiz_info["questions"]):
-                question = QuizQuestion(
-                    quiz_id=quiz.id,
-                    order_index=order,
-                    question_text=q["question_text"],
-                    options=json.dumps(q["options"]),
-                    correct_option_index=q["correct_option_index"],
-                    explanation=q["explanation"],
-                )
-                session.add(question)
+
+        for order, q in enumerate(quiz_info["questions"]):
+            session.add(QuizQuestion(
+                quiz_id=quiz.id,
+                order_index=order,
+                question_text=q["question_text"],
+                options=json.dumps(q["options"]),
+                correct_option_index=q["correct_option_index"],
+                explanation=q["explanation"],
+            ))
 
     await session.commit()
-    print(f"✅ Seeded {len(lessons_data)} lessons with quizzes.")
+    print(f"✅ Upserted {len(lessons_data)} lessons with quizzes.")
 
 
 async def main():

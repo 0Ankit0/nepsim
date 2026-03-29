@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/analysis_provider.dart';
+import '../../../simulator/presentation/providers/simulator_provider.dart';
 
 class SymbolAnalysisPage extends ConsumerWidget {
   final String symbol;
+  final int? simulationId;
 
-  const SymbolAnalysisPage({super.key, required this.symbol});
+  const SymbolAnalysisPage({super.key, required this.symbol, this.simulationId});
 
   Color _signalColor(String signal) {
     switch (signal) {
@@ -26,7 +28,14 @@ class SymbolAnalysisPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final analysisAsync = ref.watch(symbolAnalysisProvider(symbol));
+    final simulationDate = simulationId == null ? null : ref
+        .watch(simulationDetailProvider(simulationId!))
+        .maybeWhen(
+          data: (sim) => sim.current_sim_date.split('T').first,
+          orElse: () => null,
+        );
+    final scope = SymbolAnalysisScope(symbol: symbol, asOfDate: simulationDate);
+    final analysisAsync = ref.watch(symbolAnalysisProvider(scope));
 
     return Scaffold(
       appBar: AppBar(
@@ -34,7 +43,7 @@ class SymbolAnalysisPage extends ConsumerWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () => ref.invalidate(symbolAnalysisProvider(symbol)),
+            onPressed: () => ref.invalidate(symbolAnalysisProvider(scope)),
           ),
         ],
       ),
@@ -48,6 +57,23 @@ class SymbolAnalysisPage extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                if (simulationDate != null)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 16),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFEF3C7),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      'Simulation guardrail active: analysis is capped at $simulationDate.',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF92400E),
+                      ),
+                    ),
+                  ),
                 // Header card
                 Card(
                   elevation: 2,

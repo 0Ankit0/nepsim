@@ -313,22 +313,39 @@ def analyze_stock(
 
 async def analyze_symbol_from_supabase(symbol: str) -> Optional[AnalysisResult]:
     """Fetch latest indicators + quote from Supabase and run analysis engine."""
+    return await analyze_symbol_from_supabase_as_of(symbol)
+
+
+async def analyze_symbol_from_supabase_as_of(
+    symbol: str,
+    as_of_date: Optional[str] = None,
+) -> Optional[AnalysisResult]:
+    """Fetch indicators + quote from Supabase up to `as_of_date` and run analysis."""
     try:
         indicators, quote = await asyncio.gather(
-            SupabaseMarketService.get_latest_indicators(symbol),
-            SupabaseMarketService.get_latest_quote(symbol),
+            SupabaseMarketService.get_latest_indicators(symbol, as_of_date=as_of_date),
+            SupabaseMarketService.get_latest_quote(symbol, as_of_date=as_of_date),
         )
         if not indicators or not quote:
             return None
-        return analyze_stock(symbol, indicators, quote)
+
+        result = analyze_stock(symbol, indicators, quote)
+        result.analysis_date = indicators.date or quote.date or datetime.now().strftime("%Y-%m-%d")
+        return result
     except Exception as exc:
-        logger.error("analyze_symbol_from_supabase(%s) error: %s", symbol, exc)
+        logger.error(
+            "analyze_symbol_from_supabase_as_of(%s, %s) error: %s",
+            symbol,
+            as_of_date,
+            exc,
+        )
         return None
 
 
 async def get_top_stocks(
     limit: int = 20,
     signal_filter: Optional[str] = None,
+    as_of_date: Optional[str] = None,
 ) -> list[AnalysisResult]:
     """
     Analyze all NEPSE symbols in parallel (semaphore=20), optionally filter
@@ -342,7 +359,7 @@ async def get_top_stocks(
 
     async def _analyze_with_sem(sym: str) -> Optional[AnalysisResult]:
         async with semaphore:
-            return await analyze_symbol_from_supabase(sym)
+            return await analyze_symbol_from_supabase_as_of(sym, as_of_date=as_of_date)
 
     results_raw = await asyncio.gather(*[_analyze_with_sem(s) for s in symbols])
     results: list[AnalysisResult] = [r for r in results_raw if r is not None]
@@ -839,7 +856,10 @@ def _find_similar_periods(
     return selected
 
 
-async def get_stock_360_view(symbol: str) -> Optional[Stock360Schema]:
+async def get_stock_360_view(
+    symbol: str,
+    as_of_date: Optional[str] = None,
+) -> Optional[Stock360Schema]:
     """
     Return a comprehensive 360-degree view of a stock:
     - Full price history for chart
@@ -852,10 +872,10 @@ async def get_stock_360_view(symbol: str) -> Optional[Stock360Schema]:
     try:
         # Fetch all data in parallel
         latest_quote, latest_ind, history, ind_history = await asyncio.gather(
-            SupabaseMarketService.get_latest_quote(symbol),
-            SupabaseMarketService.get_latest_indicators(symbol),
-            SupabaseMarketService.get_historic_data(symbol, limit=2000),
-            SupabaseMarketService.get_indicators(symbol, limit=2000),
+            SupabaseMarketService.get_latest_quote(symbol, as_of_date=as_of_date),
+            SupabaseMarketService.get_latest_indicators(symbol, as_of_date=as_of_date),
+            SupabaseMarketService.get_historic_data(symbol, end_date=as_of_date, limit=2000),
+            SupabaseMarketService.get_indicators(symbol, end_date=as_of_date, limit=2000),
         )
 
         if not latest_quote or not latest_ind:
@@ -891,7 +911,7 @@ async def get_stock_360_view(symbol: str) -> Optional[Stock360Schema]:
 
         return Stock360Schema(
             symbol=symbol,
-            analysis_date=datetime.now().strftime("%Y-%m-%d"),
+            analysis_date=latest_ind.date or latest_quote.date or datetime.now().strftime("%Y-%m-%d"),
             current_price=ltp or None,
             open_price=latest_quote.open,
             high_price=latest_quote.high,

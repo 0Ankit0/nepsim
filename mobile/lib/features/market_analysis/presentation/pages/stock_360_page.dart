@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/models/analysis_models.dart';
 import '../providers/analysis_provider.dart';
+import '../../../simulator/presentation/providers/simulator_provider.dart';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -242,7 +243,10 @@ class _SparklinePainter extends CustomPainter {
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 class Stock360Page extends ConsumerStatefulWidget {
-  const Stock360Page({super.key});
+  final String? initialSymbol;
+  final int? simulationId;
+
+  const Stock360Page({super.key, this.initialSymbol, this.simulationId});
 
   @override
   ConsumerState<Stock360Page> createState() => _Stock360PageState();
@@ -256,6 +260,9 @@ class _Stock360PageState extends ConsumerState<Stock360Page> with TickerProvider
   @override
   void initState() {
     super.initState();
+    final initialSymbol = widget.initialSymbol?.trim().toUpperCase() ?? '';
+    _controller.text = initialSymbol;
+    _activeSymbol = initialSymbol;
     _tabController = TabController(length: 4, vsync: this);
   }
 
@@ -275,6 +282,13 @@ class _Stock360PageState extends ConsumerState<Stock360Page> with TickerProvider
 
   @override
   Widget build(BuildContext context) {
+    final simulationDate = widget.simulationId == null ? null : ref
+        .watch(simulationDetailProvider(widget.simulationId!))
+        .maybeWhen(
+          data: (sim) => sim.current_sim_date.split('T').first,
+          orElse: () => null,
+        );
+
     return Scaffold(
       backgroundColor: const Color(0xFFF9FAFB),
       appBar: AppBar(
@@ -294,8 +308,28 @@ class _Stock360PageState extends ConsumerState<Stock360Page> with TickerProvider
           Container(
             color: Colors.white,
             padding: const EdgeInsets.all(16),
-            child: Row(
+            child: Column(
               children: [
+                if (simulationDate != null)
+                  Container(
+                    width: double.infinity,
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFEF3C7),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      'Simulation guardrail active: 360 data is capped at $simulationDate.',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF92400E),
+                      ),
+                    ),
+                  ),
+                Row(
+                  children: [
                 Expanded(
                   child: TextField(
                     controller: _controller,
@@ -323,6 +357,8 @@ class _Stock360PageState extends ConsumerState<Stock360Page> with TickerProvider
                   ),
                   child: const Text('Go'),
                 ),
+                  ],
+                ),
               ],
             ),
           ),
@@ -330,7 +366,7 @@ class _Stock360PageState extends ConsumerState<Stock360Page> with TickerProvider
           Expanded(
             child: _activeSymbol.isEmpty
                 ? _buildEmptyState()
-                : _buildStockView(_activeSymbol),
+                : _buildStockView(_activeSymbol, simulationDate),
           ),
         ],
       ),
@@ -354,8 +390,9 @@ class _Stock360PageState extends ConsumerState<Stock360Page> with TickerProvider
     );
   }
 
-  Widget _buildStockView(String symbol) {
-    final asyncData = ref.watch(stock360Provider(symbol));
+  Widget _buildStockView(String symbol, String? simulationDate) {
+    final scope = SymbolAnalysisScope(symbol: symbol, asOfDate: simulationDate);
+    final asyncData = ref.watch(stock360Provider(scope));
 
     return asyncData.when(
       loading: () => Center(
@@ -383,7 +420,7 @@ class _Stock360PageState extends ConsumerState<Stock360Page> with TickerProvider
               Text('Check the symbol and try again', style: TextStyle(color: Colors.grey[500])),
               const SizedBox(height: 16),
               ElevatedButton(
-                onPressed: () => ref.invalidate(stock360Provider(symbol)),
+                onPressed: () => ref.invalidate(stock360Provider(scope)),
                 child: const Text('Retry'),
               ),
             ],

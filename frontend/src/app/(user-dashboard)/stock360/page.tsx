@@ -1,11 +1,13 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Search, TrendingUp, TrendingDown, Minus, AlertCircle, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useStock360View } from '@/hooks/useMarketAnalysis';
+import { useSimulation } from '@/hooks/useSimulator';
 import type { IndicatorSignal, SimilarPeriod, PricePoint } from '@/api/marketAnalysis';
 import { MarketChartCanvas } from '@/components/market-chart/chart-canvas';
 import { DEFAULT_LAYOUT_SETTINGS, type ChartStyle, type ChartRange, type PriceBar } from '@/components/market-chart/chart-config';
@@ -238,10 +240,17 @@ function SimilarPeriodCard({ period }: { period: SimilarPeriod }) {
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function Stock360Page() {
-  const [inputValue, setInputValue] = useState('');
-  const [activeSymbol, setActiveSymbol] = useState('');
+  const searchParams = useSearchParams();
+  const initialSymbol = searchParams.get('symbol')?.trim().toUpperCase() ?? '';
+  const simId = searchParams.get('simId');
+  const simulationId = simId ? Number.parseInt(simId, 10) : 0;
+  const { data: sim } = useSimulation(simulationId || undefined);
+  const simulationDate = sim?.current_sim_date?.split('T')[0] ?? undefined;
 
-  const { data, isLoading, isError, refetch } = useStock360View(activeSymbol);
+  const [inputValue, setInputValue] = useState(initialSymbol);
+  const [activeSymbol, setActiveSymbol] = useState(initialSymbol);
+
+  const { data, isLoading, isError, refetch } = useStock360View(activeSymbol, simulationDate);
 
   const handleSearch = () => {
     const sym = inputValue.trim().toUpperCase();
@@ -258,6 +267,11 @@ export default function Stock360Page() {
         <p className="text-sm text-gray-500 mt-1">
           Enter any NEPSE symbol to get a comprehensive historic analysis, indicator breakdown, trend view, and similar patterns.
         </p>
+        {simulationDate && (
+          <p className="mt-2 text-xs font-medium text-amber-700">
+            Simulation guardrail active: 360 data is capped at {simulationDate}.
+          </p>
+        )}
       </div>
 
       {/* Search */}

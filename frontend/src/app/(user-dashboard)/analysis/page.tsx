@@ -2,10 +2,13 @@
 
 import React, { useState } from 'react';
 import { useTopStocks, useMarketOverview } from '@/hooks/useMarketAnalysis';
+import { useSimulation } from '@/hooks/useSimulator';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui';
 import { TrendingUp, TrendingDown, ChevronDown, ChevronUp, Info } from 'lucide-react';
 import type { AnalysisResult } from '@/api/marketAnalysis';
+import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 
 type SignalFilter = 'ALL' | 'STRONG_BUY' | 'BUY' | 'HOLD' | 'SELL' | 'STRONG_SELL';
 const SIGNAL_FILTERS: SignalFilter[] = ['ALL', 'STRONG_BUY', 'BUY', 'HOLD', 'SELL', 'STRONG_SELL'];
@@ -37,12 +40,21 @@ function ScoreBar({ value, color }: { value: number; color: string }) {
 }
 
 export default function AnalysisPage() {
+  const searchParams = useSearchParams();
   const [signal, setSignal] = useState<SignalFilter>('ALL');
   const [limit, setLimit] = useState(20);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  const simId = searchParams.get('simId');
+  const simulationId = simId ? Number.parseInt(simId, 10) : 0;
+  const { data: sim } = useSimulation(simulationId || undefined);
+  const simulationDate = sim?.current_sim_date?.split('T')[0] ?? undefined;
 
-  const { data: overview, isLoading: overviewLoading } = useMarketOverview();
-  const { data: topStocks, isLoading: stocksLoading } = useTopStocks(limit, signal === 'ALL' ? undefined : signal);
+  const { data: overview, isLoading: overviewLoading } = useMarketOverview(simulationDate);
+  const { data: topStocks, isLoading: stocksLoading } = useTopStocks(
+    limit,
+    signal === 'ALL' ? undefined : signal,
+    simulationDate,
+  );
 
   const bullishPct = overview?.bullish_pct ?? 0;
   const bearishPct = overview?.bearish_pct ?? 0;
@@ -56,6 +68,11 @@ export default function AnalysisPage() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Market Analysis</h1>
         <p className="text-gray-500 text-sm">AI-powered technical signal analysis for NEPSE stocks</p>
+        {simulationDate && (
+          <p className="mt-2 text-xs font-medium text-amber-700">
+            Simulation guardrail active: all analysis is capped at {simulationDate}.
+          </p>
+        )}
       </div>
 
       {/* Market Overview Banner */}
@@ -166,20 +183,21 @@ export default function AnalysisPage() {
                 <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">Stop</th>
                 <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">R:R</th>
                 <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider min-w-[140px]">Osc / Trend / Vol</th>
+                <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">Chart</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {stocksLoading ? (
                 Array.from({ length: 8 }).map((_, i) => (
                   <tr key={i}>
-                    <td colSpan={10} className="px-4 py-3">
+                      <td colSpan={11} className="px-4 py-3">
                       <Skeleton className="h-8 w-full bg-gray-50" />
                     </td>
                   </tr>
                 ))
               ) : !topStocks || topStocks.results.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-20 text-center text-gray-500">
+                  <td colSpan={11} className="px-4 py-20 text-center text-gray-500">
                     <div className="flex flex-col items-center gap-2">
                       <Info className="h-8 w-8 text-gray-300" />
                       <p>No analysis results found for the selected filter.</p>
@@ -237,10 +255,19 @@ export default function AnalysisPage() {
                             </div>
                           </div>
                         </td>
+                        <td className="px-4 py-3 text-right">
+                          <Link
+                            href={simId ? `/market/${row.symbol}?simId=${simId}` : `/market/${row.symbol}`}
+                            className="text-xs font-semibold text-indigo-600 hover:text-indigo-700"
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            Open Chart
+                          </Link>
+                        </td>
                       </tr>
                       {isExpanded && (
                         <tr className="bg-indigo-50/40">
-                          <td colSpan={10} className="px-8 py-3">
+                          <td colSpan={11} className="px-8 py-3">
                             <div className="flex items-start gap-2">
                               <div className="flex-1">
                                 <p className="text-xs font-semibold text-gray-600 mb-1.5">Key Signals</p>

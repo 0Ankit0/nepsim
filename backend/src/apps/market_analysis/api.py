@@ -7,7 +7,13 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 
 from .schemas import AnalysisResultSchema, MarketOverviewSchema, TopStocksResponse, Stock360Schema
-from .services import AnalysisResult, analyze_symbol_from_supabase, get_top_stocks, get_stock_360_view
+from .services import (
+    AnalysisResult,
+    analyze_symbol_from_supabase,
+    analyze_symbol_from_supabase_as_of,
+    get_top_stocks,
+    get_stock_360_view,
+)
 
 router = APIRouter(prefix="/market-analysis", tags=["Market Analysis"])
 
@@ -35,9 +41,10 @@ def _to_schema(r: AnalysisResult) -> AnalysisResultSchema:
 async def top_stocks(
     limit: int = Query(20, ge=1, le=500),
     signal: Optional[str] = Query(None, description="Filter by signal: STRONG_BUY, BUY, HOLD, SELL, STRONG_SELL"),
+    as_of_date: Optional[str] = Query(None, description="Clamp analysis to rows on or before YYYY-MM-DD"),
 ):
     """Get top stocks ranked by overall analysis score. Public endpoint."""
-    results = await get_top_stocks(limit=limit, signal_filter=signal)
+    results = await get_top_stocks(limit=limit, signal_filter=signal, as_of_date=as_of_date)
     return TopStocksResponse(
         generated_at=datetime.now().isoformat(),
         count=len(results),
@@ -46,9 +53,11 @@ async def top_stocks(
 
 
 @router.get("/market-overview", response_model=MarketOverviewSchema)
-async def market_overview():
+async def market_overview(
+    as_of_date: Optional[str] = Query(None, description="Clamp overview to rows on or before YYYY-MM-DD"),
+):
     """Get market-wide signal distribution across all NEPSE symbols. Public endpoint."""
-    results = await get_top_stocks(limit=9999)
+    results = await get_top_stocks(limit=9999, as_of_date=as_of_date)
     total = len(results)
     strong_buy = sum(1 for r in results if r.signal == "STRONG_BUY")
     buy = sum(1 for r in results if r.signal == "BUY")
@@ -57,8 +66,9 @@ async def market_overview():
     strong_sell = sum(1 for r in results if r.signal == "STRONG_SELL")
     bullish_pct = round((strong_buy + buy) / total * 100, 2) if total else 0.0
     bearish_pct = round((sell + strong_sell) / total * 100, 2) if total else 0.0
+    overview_date = as_of_date or (results[0].analysis_date if results else datetime.now().strftime("%Y-%m-%d"))
     return MarketOverviewSchema(
-        date=datetime.now().strftime("%Y-%m-%d"),
+        date=overview_date,
         total_analyzed=total,
         strong_buy=strong_buy,
         buy=buy,
@@ -71,7 +81,10 @@ async def market_overview():
 
 
 @router.get("/360/{symbol}", response_model=Stock360Schema)
-async def stock_360_view(symbol: str):
+async def stock_360_view(
+    symbol: str,
+    as_of_date: Optional[str] = Query(None, description="Clamp analysis to rows on or before YYYY-MM-DD"),
+):
     """
     Return a full 360-degree view of a NEPSE stock including:
     - Price chart history, indicator signals with interpretations,
@@ -79,16 +92,23 @@ async def stock_360_view(symbol: str):
     - Trend analysis (MA alignment, support/resistance, Ichimoku),
     - Similar historical patterns found via indicator fingerprinting.
     """
-    result = await get_stock_360_view(symbol.upper())
+    result = await get_stock_360_view(symbol.upper(), as_of_date=as_of_date)
     if not result:
         raise HTTPException(status_code=404, detail=f"No market data found for symbol '{symbol}'.")
     return result
 
 
 @router.get("/{symbol}", response_model=AnalysisResultSchema)
-async def analyze_symbol(symbol: str):
+async def analyze_symbol(
+    symbol: str,
+    as_of_date: Optional[str] = Query(None, description="Clamp analysis to rows on or before YYYY-MM-DD"),
+):
     """Analyze a single NEPSE symbol. Public endpoint."""
-    result = await analyze_symbol_from_supabase(symbol.upper())
+    result = await (
+        analyze_symbol_from_supabase_as_of(symbol.upper(), as_of_date=as_of_date)
+        if as_of_date
+        else analyze_symbol_from_supabase(symbol.upper())
+    )
     if not result:
         raise HTTPException(status_code=404, detail=f"No market data found for symbol '{symbol}'.")
     return _to_schema(result)

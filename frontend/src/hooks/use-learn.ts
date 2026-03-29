@@ -2,13 +2,13 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
-import type { LessonListItem, LessonDetail, Quiz, QuizResult, QuizSubmission } from '@/types';
+import type { CurriculumSection, LessonDetail, QuizResult, QuizSubmissionPayload } from '@/types';
 
 export function useLessons() {
   return useQuery({
     queryKey: ['lessons'],
     queryFn: async () => {
-      const response = await apiClient.get<LessonListItem[]>('/learn/lessons');
+      const response = await apiClient.get<CurriculumSection[]>('/learn/lessons');
       return response.data;
     },
   });
@@ -69,8 +69,8 @@ export function useDeleteLesson() {
 
 export function useSubmitQuiz() {
   return useMutation({
-    mutationFn: async ({ quizId, submissions }: { quizId: number; submissions: QuizSubmission[] }) => {
-      const response = await apiClient.post<QuizResult>(`/learn/quizzes/${quizId}/submit`, submissions);
+    mutationFn: async ({ quizId, payload }: { quizId: number; payload: QuizSubmissionPayload }) => {
+      const response = await apiClient.post<QuizResult>(`/learn/quizzes/${quizId}/submit`, payload);
       return response.data;
     },
   });

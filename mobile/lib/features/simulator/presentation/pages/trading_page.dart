@@ -42,7 +42,6 @@ class _TradingPageState extends ConsumerState<TradingPage> {
   @override
   Widget build(BuildContext context) {
     final simAsync = ref.watch(simulationDetailProvider(widget.simulationId));
-    final ideasAsync = ref.watch(topStocksBySignalProvider('BUY'));
 
     return Scaffold(
       appBar: AppBar(
@@ -59,6 +58,12 @@ class _TradingPageState extends ConsumerState<TradingPage> {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (err, stack) => Center(child: Text('Error: $err')),
         data: (sim) {
+          final simulationDate = sim.current_sim_date.split('T').first;
+          final ideasAsync = ref.watch(
+            topStocksBySignalProvider(
+              AnalysisScope(signal: 'BUY', limit: 3, asOfDate: simulationDate),
+            ),
+          );
           final isEnded = sim.status == 'ended' || sim.status == 'analysing' || sim.status == 'analysis_ready';
           final isPaused = sim.status == 'paused';
           _syncAutoTick(sim.status);
@@ -262,7 +267,9 @@ class _TradingPageState extends ConsumerState<TradingPage> {
                                               child: const Text('Open Chart'),
                                             ),
                                             FilledButton.tonal(
-                                              onPressed: () => context.push('${AppConstants.marketAnalysisDetailRoute}?symbol=${stock.symbol}'),
+                                              onPressed: () => context.push(
+                                                '${AppConstants.marketAnalysisDetailRoute}?symbol=${stock.symbol}&simId=${widget.simulationId}',
+                                              ),
                                               child: const Text('Open Analysis'),
                                             ),
                                           ],

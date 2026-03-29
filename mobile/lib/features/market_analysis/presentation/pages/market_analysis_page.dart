@@ -3,9 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../providers/analysis_provider.dart';
 import '../../../../core/constants/app_constants.dart';
+import '../../../simulator/presentation/providers/simulator_provider.dart';
 
 class MarketAnalysisPage extends ConsumerWidget {
-  const MarketAnalysisPage({super.key});
+  final int? simulationId;
+
+  const MarketAnalysisPage({super.key, this.simulationId});
 
   static const _filterSignals = ['', 'STRONG_BUY', 'BUY', 'HOLD', 'SELL', 'STRONG_SELL'];
   static const _filterLabels = ['All', 'Strong Buy', 'Buy', 'Hold', 'Sell', 'Strong Sell'];
@@ -29,8 +32,16 @@ class MarketAnalysisPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final overviewAsync = ref.watch(marketOverviewProvider);
-    final topStocksAsync = ref.watch(topStocksProvider);
+    final simulationDate = simulationId == null ? null : ref
+        .watch(simulationDetailProvider(simulationId!))
+        .maybeWhen(
+          data: (sim) => sim.current_sim_date.split('T').first,
+          orElse: () => null,
+        );
+    final overviewAsync = ref.watch(marketOverviewProvider(simulationDate));
+    final topStocksAsync = ref.watch(topStocksProvider(
+      AnalysisScope(asOfDate: simulationDate),
+    ));
     final currentFilter = ref.watch(topStocksSignalFilterProvider);
 
     return Scaffold(
@@ -41,7 +52,9 @@ class MarketAnalysisPage extends ConsumerWidget {
             icon: const Icon(Icons.manage_search, size: 18),
             label: const Text('360° View'),
             style: TextButton.styleFrom(foregroundColor: const Color(0xFF2563EB)),
-            onPressed: () => context.push('/stock-360'),
+            onPressed: () => context.push(
+              simulationId == null ? '/stock-360' : '/stock-360?simId=$simulationId',
+            ),
           ),
           IconButton(
             icon: const Icon(Icons.bookmark_border),
@@ -52,8 +65,8 @@ class MarketAnalysisPage extends ConsumerWidget {
             icon: const Icon(Icons.refresh),
             tooltip: 'Refresh',
             onPressed: () {
-              ref.invalidate(topStocksProvider);
-              ref.invalidate(marketOverviewProvider);
+              ref.invalidate(topStocksProvider(AnalysisScope(asOfDate: simulationDate)));
+              ref.invalidate(marketOverviewProvider(simulationDate));
             },
           ),
         ],
@@ -83,6 +96,24 @@ class MarketAnalysisPage extends ConsumerWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        if (simulationDate != null) ...[
+                          Container(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFEF3C7),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              'Simulation guardrail active: analysis is capped at $simulationDate.',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF92400E),
+                              ),
+                            ),
+                          ),
+                        ],
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
@@ -182,9 +213,9 @@ class MarketAnalysisPage extends ConsumerWidget {
             loading: () => const SliverFillRemaining(
               child: Center(child: CircularProgressIndicator()),
             ),
-            error: (e, _) => SliverFillRemaining(
-              child: Center(child: Text('Error: $e')),
-            ),
+              error: (e, _) => SliverFillRemaining(
+                child: Center(child: Text('Error: $e')),
+              ),
             data: (data) => SliverPadding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
               sliver: SliverList(
@@ -198,8 +229,12 @@ class MarketAnalysisPage extends ConsumerWidget {
                       margin: const EdgeInsets.only(bottom: 10),
                       child: InkWell(
                         borderRadius: BorderRadius.circular(12),
-                        onTap: () => context.push(
-                            '${AppConstants.marketAnalysisDetailRoute}?symbol=${stock.symbol}'),
+                        onTap: () {
+                          final simParam = simulationId != null ? '&simId=$simulationId' : '';
+                          context.push(
+                            '${AppConstants.marketAnalysisDetailRoute}?symbol=${stock.symbol}$simParam',
+                          );
+                        },
                         child: Padding(
                           padding: const EdgeInsets.all(14),
                           child: Column(

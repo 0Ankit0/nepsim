@@ -126,25 +126,29 @@ export interface Stock360View {
 }
 
 export const marketAnalysisApi = {
-  getTopStocks: async (limit: number = 20, signal?: string): Promise<TopStocksResponse> => {
+  getTopStocks: async (limit: number = 20, signal?: string, asOfDate?: string): Promise<TopStocksResponse> => {
     const params: Record<string, string | number> = { limit };
     if (signal && signal !== 'ALL') params.signal = signal;
+    if (asOfDate) params.as_of_date = asOfDate;
     const { data } = await apiClient.get('/market-analysis/top-stocks', { params });
     return data;
   },
 
-  getMarketOverview: async (): Promise<MarketOverview> => {
-    const { data } = await apiClient.get('/market-analysis/market-overview');
+  getMarketOverview: async (asOfDate?: string): Promise<MarketOverview> => {
+    const params = asOfDate ? { as_of_date: asOfDate } : undefined;
+    const { data } = await apiClient.get('/market-analysis/market-overview', { params });
     return data;
   },
 
-  getStockAnalysis: async (symbol: string): Promise<AnalysisResult> => {
-    const { data } = await apiClient.get(`/market-analysis/${symbol}`);
+  getStockAnalysis: async (symbol: string, asOfDate?: string): Promise<AnalysisResult> => {
+    const params = asOfDate ? { as_of_date: asOfDate } : undefined;
+    const { data } = await apiClient.get(`/market-analysis/${symbol}`, { params });
     return data;
   },
 
-  getStock360View: async (symbol: string): Promise<Stock360View> => {
-    const { data } = await apiClient.get(`/market-analysis/360/${symbol}`);
+  getStock360View: async (symbol: string, asOfDate?: string): Promise<Stock360View> => {
+    const params = asOfDate ? { as_of_date: asOfDate } : undefined;
+    const { data } = await apiClient.get(`/market-analysis/360/${symbol}`, { params });
     return data;
   },
 };

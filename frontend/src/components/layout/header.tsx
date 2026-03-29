@@ -25,6 +25,8 @@ function useClickOutside(ref: React.RefObject<HTMLElement | null>, handler: () =
 export function Header() {
   const { logout } = useAuth();
   const { user } = useAuthStore();
+  const isAuthenticated = hasStoredAuthTokens();
+  const effectiveUser = user ?? (!isAuthenticated ? getOfflineGuestUser() : null);
 
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);

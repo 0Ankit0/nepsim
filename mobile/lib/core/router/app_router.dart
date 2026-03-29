@@ -164,7 +164,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             routes: [
               GoRoute(
                 path: AppConstants.marketAnalysisRoute,
-                builder: (context, state) => const MarketAnalysisPage(),
+                builder: (context, state) {
+                  final simId = int.tryParse(state.uri.queryParameters['simId'] ?? '');
+                  return MarketAnalysisPage(simulationId: simId);
+                },
               ),
             ],
           ),
@@ -243,12 +246,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppConstants.marketAnalysisDetailRoute,
         builder: (context, state) {
           final symbol = state.uri.queryParameters['symbol'] ?? '';
-          return SymbolAnalysisPage(symbol: symbol);
+          final simId = int.tryParse(state.uri.queryParameters['simId'] ?? '');
+          return SymbolAnalysisPage(symbol: symbol, simulationId: simId);
         },
       ),
       GoRoute(
         path: '/stock-360',
-        builder: (context, state) => const Stock360Page(),
+        builder: (context, state) {
+          final symbol = state.uri.queryParameters['symbol'];
+          final simId = int.tryParse(state.uri.queryParameters['simId'] ?? '');
+          return Stock360Page(initialSymbol: symbol, simulationId: simId);
+        },
       ),
     ],
   );

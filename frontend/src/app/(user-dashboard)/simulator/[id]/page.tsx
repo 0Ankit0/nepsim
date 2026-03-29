@@ -30,7 +30,8 @@ export default function TradingDashboardPage({ params }: { params: Promise<{ id:
   const id = parseInt(rawId);
   const { data: sim, isLoading } = useSimulation(id);
   const { data: symbols } = useSymbols();
-  const { data: topStocks } = useTopStocks(3, 'BUY');
+    const simulationDate = sim?.current_sim_date?.split('T')[0];
+    const { data: topStocks } = useTopStocks(3, 'BUY', simulationDate);
   
   const advanceDay = useAdvanceDay(id);
   const endSimulation = useEndSimulation(id);
@@ -302,7 +303,7 @@ export default function TradingDashboardPage({ params }: { params: Promise<{ id:
                                         <Link href={`/market/${stock.symbol}?simId=${id}`} className="flex-1">
                                             <Button variant="outline" className="w-full">Open Chart</Button>
                                         </Link>
-                                        <Link href={`/stock360`} className="flex-1">
+                                        <Link href={`/stock360?symbol=${encodeURIComponent(stock.symbol)}&simId=${id}`} className="flex-1">
                                             <Button className="w-full bg-amber-600 hover:bg-amber-700 text-white">360 View</Button>
                                         </Link>
                                     </div>

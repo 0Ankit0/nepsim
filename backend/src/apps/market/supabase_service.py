@@ -102,20 +102,26 @@ class SupabaseMarketService:
             return []
 
     @staticmethod
-    async def get_latest_quote(symbol: str) -> Optional[HistoricDataRow]:
-        """Return the most recent historicdata row for a symbol."""
+    async def get_latest_quote(
+        symbol: str,
+        as_of_date: Optional[str] = None,
+    ) -> Optional[HistoricDataRow]:
+        """Return the most recent historicdata row for a symbol up to `as_of_date`."""
         client = await get_supabase_client()
         if not client:
             return None
         try:
-            result = await (
+            query = (
                 client.table("historicdata")
                 .select("*")
                 .eq("symbol", symbol.upper())
                 .order("date", desc=True)
                 .limit(1)
-                .execute()
             )
+            if as_of_date:
+                query = query.lte("date", as_of_date)
+
+            result = await query.execute()
             rows = SupabaseMarketService._safe_list(result)
             return HistoricDataRow(**rows[0]) if rows else None
         except Exception as exc:
@@ -156,20 +162,26 @@ class SupabaseMarketService:
             return []
 
     @staticmethod
-    async def get_latest_indicators(symbol: str) -> Optional[IndicatorRow]:
-        """Return the most recent indicator snapshot for a symbol."""
+    async def get_latest_indicators(
+        symbol: str,
+        as_of_date: Optional[str] = None,
+    ) -> Optional[IndicatorRow]:
+        """Return the most recent indicator snapshot for a symbol up to `as_of_date`."""
         client = await get_supabase_client()
         if not client:
             return None
         try:
-            result = await (
+            query = (
                 client.table("indicators")
                 .select("*")
                 .eq("symbol", symbol.upper())
                 .order("date", desc=True)
                 .limit(1)
-                .execute()
             )
+            if as_of_date:
+                query = query.lte("date", as_of_date)
+
+            result = await query.execute()
             rows = SupabaseMarketService._safe_list(result)
             return IndicatorRow(**rows[0]) if rows else None
         except Exception as exc:
