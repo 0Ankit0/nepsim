@@ -4,7 +4,19 @@ import type { LineData, Time } from 'lightweight-charts';
 
 export function toDateKey(date?: string | null): string | null {
   if (!date) return null;
-  return date.split('T')[0] ?? null;
+
+  const trimmed = date.trim();
+  const isoMatch = trimmed.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (isoMatch?.[1]) {
+    return isoMatch[1];
+  }
+
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  return parsed.toISOString().slice(0, 10);
 }
 
 export function buildPriceBars(rows: HistoricDataRow[]): PriceBar[] {
@@ -91,7 +103,7 @@ export function makeLineData(rows: IndicatorRow[], selector: (row: IndicatorRow)
     const date = row.date ?? '';
     const value = selector(row);
 
-    if (!date || value == null) {
+    if (!date || value == null || !Number.isFinite(value)) {
       return [];
     }
 

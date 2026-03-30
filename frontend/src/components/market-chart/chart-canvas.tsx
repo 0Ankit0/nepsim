@@ -11,7 +11,7 @@ import {
   type HistogramData,
   type Time,
 } from 'lightweight-charts';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { IndicatorRow } from '@/api/market';
 import type { ChartLayoutSettings, PriceBar } from './chart-config';
 import { getIndicatorMeta } from './chart-config';
@@ -21,6 +21,12 @@ interface MarketChartCanvasProps {
   priceBars: PriceBar[];
   indicators: IndicatorRow[];
   settings: ChartLayoutSettings;
+  highlightedRange?: {
+    startDate: string;
+    endDate: string;
+  } | null;
+  drawingTool?: 'none' | 'trendline' | 'fib' | 'xabcd' | 'long';
+  clearDrawingsNonce?: number;
   isLoading?: boolean;
   emptyMessage?: string;
 }
@@ -29,10 +35,38 @@ export function MarketChartCanvas({
   priceBars,
   indicators,
   settings,
+  highlightedRange = null,
+  drawingTool = 'none',
+  clearDrawingsNonce = 0,
   isLoading = false,
   emptyMessage = 'No historic chart data is available for this symbol.',
 }: MarketChartCanvasProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
+  const [pendingDrawingPoints, setPendingDrawingPoints] = useState<Array<{ time: Time; price: number }>>([]);
+  const [drawings, setDrawings] = useState<Array<{ id: string; type: 'trendline' | 'fib' | 'xabcd' | 'long'; points: Array<{ time: Time; price: number }> }>>([]);
+
+  const requiredPoints = useMemo(
+    () =>
+      drawingTool === 'trendline'
+        ? 2
+        : drawingTool === 'fib'
+          ? 2
+          : drawingTool === 'long'
+            ? 2
+            : drawingTool === 'xabcd'
+              ? 5
+              : 0,
+    [drawingTool]
+  );
+
+  useEffect(() => {
+    setPendingDrawingPoints([]);
+  }, [drawingTool]);
+
+  useEffect(() => {
+    setDrawings([]);
+    setPendingDrawingPoints([]);
+  }, [clearDrawingsNonce]);
 
   const visiblePanelCount = useMemo(
     () =>
@@ -96,6 +130,8 @@ export function MarketChartCanvas({
       value: bar.close,
     }));
 
+    let primarySeries;
+
     if (settings.chartStyle === 'candlestick') {
       const series = chart.addSeries(
         CandlestickSeries,
@@ -110,6 +146,7 @@ export function MarketChartCanvas({
         0
       );
       series.setData(candleData);
+      primarySeries = series;
     } else {
       const series = chart.addSeries(
         LineSeries,
@@ -123,7 +160,164 @@ export function MarketChartCanvas({
         0
       );
       series.setData(closeLineData);
+      primarySeries = series;
     }
+
+    if (highlightedRange) {
+      const start = highlightedRange.startDate;
+      const end = highlightedRange.endDate;
+
+      const highlightedCloseData = priceBars.flatMap((bar) => {
+        if (bar.date < start || bar.date > end) {
+          return [];
+        }
+
+        return [{ time: bar.time, value: bar.close }];
+      });
+
+      if (highlightedCloseData.length > 0) {
+        const highlightedSeries = chart.addSeries(
+          LineSeries,
+          {
+            color: '#f59e0b',
+            lineWidth: 4,
+            crosshairMarkerVisible: false,
+            lastValueVisible: false,
+            priceLineVisible: false,
+          },
+          0
+        );
+        highlightedSeries.setData(highlightedCloseData);
+      }
+    }
+
+    const renderTime = (value: Time) => {
+      if (typeof value === 'string') return value;
+      if (typeof value === 'number') return value;
+      return `${value.year}-${String(value.month).padStart(2, '0')}-${String(value.day).padStart(2, '0')}`;
+    };
+
+    for (const drawing of drawings) {
+      if (drawing.type === 'trendline' && drawing.points.length >= 2) {
+        const trendLine = chart.addSeries(
+          LineSeries,
+          { color: '#0ea5e9', lineWidth: 2, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false },
+          0
+        );
+        trendLine.setData(drawing.points.slice(0, 2).map((point) => ({ time: point.time, value: point.price })));
+      }
+
+      if (drawing.type === 'fib' && drawing.points.length >= 2) {
+        const [pointA, pointB] = drawing.points;
+        const levels = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
+        const span = pointB.price - pointA.price;
+        const startTime = renderTime(pointA.time) <= renderTime(pointB.time) ? pointA.time : pointB.time;
+        const endTime = renderTime(pointA.time) <= renderTime(pointB.time) ? pointB.time : pointA.time;
+
+        for (const level of levels) {
+          const fibLine = chart.addSeries(
+            LineSeries,
+            {
+              color: '#a855f7',
+              lineWidth: level === 0 || level === 1 ? 2 : 1,
+              lineStyle: LineStyle.Dashed,
+              crosshairMarkerVisible: false,
+              lastValueVisible: false,
+              priceLineVisible: false,
+            },
+            0
+          );
+          fibLine.setData([
+            { time: startTime, value: pointA.price + span * level },
+            { time: endTime, value: pointA.price + span * level },
+          ]);
+        }
+      }
+
+      if (drawing.type === 'xabcd' && drawing.points.length >= 5) {
+        const xabcdLine = chart.addSeries(
+          LineSeries,
+          { color: '#f97316', lineWidth: 2, crosshairMarkerVisible: true, lastValueVisible: false, priceLineVisible: false },
+          0
+        );
+        xabcdLine.setData(drawing.points.map((point) => ({ time: point.time, value: point.price })));
+      }
+
+      if (drawing.type === 'long' && drawing.points.length >= 2) {
+        const [entryPoint, targetPoint] = drawing.points;
+        const priceDistance = targetPoint.price - entryPoint.price;
+        const stopPrice = entryPoint.price - Math.abs(priceDistance);
+        const startTime = renderTime(entryPoint.time) <= renderTime(targetPoint.time) ? entryPoint.time : targetPoint.time;
+        const endTime = renderTime(entryPoint.time) <= renderTime(targetPoint.time) ? targetPoint.time : entryPoint.time;
+        const levels = [
+          { price: entryPoint.price, color: '#2563eb' },
+          { price: targetPoint.price, color: '#16a34a' },
+          { price: stopPrice, color: '#dc2626' },
+        ];
+
+        for (const level of levels) {
+          const levelSeries = chart.addSeries(
+            LineSeries,
+            {
+              color: level.color,
+              lineWidth: 2,
+              lineStyle: LineStyle.Dashed,
+              crosshairMarkerVisible: false,
+              lastValueVisible: false,
+              priceLineVisible: false,
+            },
+            0
+          );
+          levelSeries.setData([
+            { time: startTime, value: level.price },
+            { time: endTime, value: level.price },
+          ]);
+        }
+      }
+    }
+
+    if (pendingDrawingPoints.length > 0) {
+      const pendingSeries = chart.addSeries(
+        LineSeries,
+        {
+          color: '#64748b',
+          lineWidth: 1,
+          lineStyle: LineStyle.Dotted,
+          crosshairMarkerVisible: true,
+          lastValueVisible: false,
+          priceLineVisible: false,
+        },
+        0
+      );
+      pendingSeries.setData(pendingDrawingPoints.map((point) => ({ time: point.time, value: point.price })));
+    }
+
+    chart.subscribeClick((param) => {
+      if (drawingTool === 'none' || !param.point || param.time == null || !primarySeries) {
+        return;
+      }
+
+      const price = primarySeries.coordinateToPrice(param.point.y);
+      if (price == null || !Number.isFinite(price)) {
+        return;
+      }
+
+      setPendingDrawingPoints((current) => {
+        const nextPoints = [...current, { time: param.time as Time, price }];
+        if (requiredPoints > 0 && nextPoints.length >= requiredPoints) {
+          setDrawings((existing) => [
+            ...existing,
+            {
+              id: `drawing-${Date.now()}-${Math.round(Math.random() * 1_000_000)}`,
+              type: drawingTool as 'trendline' | 'fib' | 'xabcd' | 'long',
+              points: nextPoints,
+            },
+          ]);
+          return [];
+        }
+        return nextPoints;
+      });
+    });
 
     const overlayIndicators = settings.indicators.filter(
       (indicator) => indicator.visible && getIndicatorMeta(indicator.id).group === 'overlay'
@@ -511,7 +705,20 @@ export function MarketChartCanvas({
     return () => {
       chart.remove();
     };
-  }, [indicators, priceBars, settings.chartStyle, settings.indicators, settings.showVolume, visiblePanelCount]);
+  }, [
+    clearDrawingsNonce,
+    drawingTool,
+    drawings,
+    highlightedRange,
+    indicators,
+    pendingDrawingPoints,
+    priceBars,
+    requiredPoints,
+    settings.chartStyle,
+    settings.indicators,
+    settings.showVolume,
+    visiblePanelCount,
+  ]);
 
   if (priceBars.length === 0) {
     return (
