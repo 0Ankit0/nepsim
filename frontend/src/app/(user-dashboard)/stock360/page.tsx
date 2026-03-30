@@ -8,9 +8,21 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useStock360View } from '@/hooks/useMarketAnalysis';
 import { useSimulation } from '@/hooks/useSimulator';
+import type { IndicatorRow } from '@/api/market';
 import type { IndicatorSignal, SimilarPeriod, PricePoint } from '@/api/marketAnalysis';
 import { MarketChartCanvas } from '@/components/market-chart/chart-canvas';
-import { DEFAULT_LAYOUT_SETTINGS, type ChartStyle, type ChartRange, type PriceBar } from '@/components/market-chart/chart-config';
+import { MarketChartToolsPanel } from '@/components/market-chart/tools-panel';
+import {
+  DEFAULT_LAYOUT_SETTINGS,
+  INDICATOR_CATALOG,
+  getIndicatorMeta,
+  upsertIndicator,
+  type ChartLayoutSettings,
+  type ChartRange,
+  type IndicatorId,
+  type IndicatorPreset,
+  type PriceBar,
+} from '@/components/market-chart/chart-config';
 import { toDateKey } from '@/components/market-chart/data-utils';
 
 // ─── Signal helpers ───────────────────────────────────────────────────────────
@@ -47,7 +59,7 @@ const fmtVol = (v?: number) => {
 
 // ─── Chart component ──────────────────────────────────────────────────────────
 
-const PRICE_HISTORY_RANGES: ChartRange[] = ['1M', '3M', '6M', '1Y', 'ALL'];
+const PRICE_HISTORY_RANGES: ChartRange[] = ['1D', '2D', '1W', '1M', '3M', '6M', '1Y', 'ALL'];
 
 function buildPriceHistoryBars(history: PricePoint[]): PriceBar[] {
   const uniqueRows = new Map<string, PriceBar>();
@@ -75,7 +87,7 @@ function buildPriceHistoryBars(history: PricePoint[]): PriceBar[] {
   return Array.from(uniqueRows.values()).sort((left, right) => left.date.localeCompare(right.date));
 }
 
-function filterPriceHistoryByRange(rows: PriceBar[], range: ChartRange): PriceBar[] {
+function filterPriceHistoryByRange<T extends { date: string }>(rows: T[], range: ChartRange): T[] {
   if (rows.length === 0 || range === 'ALL') {
     return rows;
   }
@@ -106,54 +118,267 @@ function filterPriceHistoryByRange(rows: PriceBar[], range: ChartRange): PriceBa
   });
 }
 
-function PriceChart({ history }: { history: PricePoint[] }) {
-  const [chartStyle, setChartStyle] = useState<ChartStyle>(DEFAULT_LAYOUT_SETTINGS.chartStyle);
-  const [range, setRange] = useState<ChartRange>('1Y');
+function buildComputedIndicators(priceBars: PriceBar[]): IndicatorRow[] {
+  const closes = priceBars.map((bar) => bar.close);
+  const highs = priceBars.map((bar) => bar.high);
+  const lows = priceBars.map((bar) => bar.low);
+  const volumes = priceBars.map((bar) => bar.volume);
+  const rows: IndicatorRow[] = [];
+  let ema12: number | null = null;
+  let ema26: number | null = null;
+  let avgGain: number | null = null;
+  let avgLoss: number | null = null;
+  let obv = 0;
+  const macdValues: Array<number | null> = [];
+
+  for (let index = 0; index < priceBars.length; index += 1) {
+    const date = priceBars[index]?.date;
+    const close = closes[index] ?? null;
+    if (!date || close == null) continue;
+
+    const periodSlice = (length: number) => closes.slice(Math.max(0, index - length + 1), index + 1);
+    const sma = (length: number) => {
+      const slice = periodSlice(length);
+      if (slice.length < length) return null;
+      return slice.reduce((sum, value) => sum + value, 0) / length;
+    };
+    const stdDev = (length: number) => {
+      const mean = sma(length);
+      if (mean == null) return null;
+      const slice = periodSlice(length);
+      const variance = slice.reduce((sum, value) => sum + (value - mean) ** 2, 0) / slice.length;
+      return Math.sqrt(variance);
+    };
+
+    const alpha12 = 2 / (12 + 1);
+    const alpha26 = 2 / (26 + 1);
+    ema12 = ema12 == null ? close : close * alpha12 + ema12 * (1 - alpha12);
+    ema26 = ema26 == null ? close : close * alpha26 + ema26 * (1 - alpha26);
+
+    const prevClose = index > 0 ? closes[index - 1] : close;
+    const change = close - prevClose;
+    const gain = Math.max(change, 0);
+    const loss = Math.max(-change, 0);
+
+    if (index === 14) {
+      const gains = closes.slice(1, 15).map((value, i) => Math.max(value - closes[i]!, 0));
+      const losses = closes.slice(1, 15).map((value, i) => Math.max(closes[i]! - value, 0));
+      avgGain = gains.reduce((sum, value) => sum + value, 0) / 14;
+      avgLoss = losses.reduce((sum, value) => sum + value, 0) / 14;
+    } else if (index > 14 && avgGain != null && avgLoss != null) {
+      avgGain = (avgGain * 13 + gain) / 14;
+      avgLoss = (avgLoss * 13 + loss) / 14;
+    }
+
+    const rsi14 =
+      avgGain == null || avgLoss == null ? null : avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+
+    const macdLine = ema12 != null && ema26 != null ? ema12 - ema26 : null;
+    macdValues.push(macdLine);
+    const macdWindow = macdValues.filter((value): value is number => value != null).slice(-9);
+    const macdSignal = macdWindow.length < 9 ? null : macdWindow.reduce((sum, value) => sum + value, 0) / macdWindow.length;
+    const macdHist = macdLine != null && macdSignal != null ? macdLine - macdSignal : null;
+
+    const stochWindowHigh = Math.max(...highs.slice(Math.max(0, index - 13), index + 1));
+    const stochWindowLow = Math.min(...lows.slice(Math.max(0, index - 13), index + 1));
+    const stochK = index < 13 || stochWindowHigh === stochWindowLow ? null : ((close - stochWindowLow) / (stochWindowHigh - stochWindowLow)) * 100;
+    const recentK = [...rows.map((row) => row.stoch_k).slice(-2), stochK].filter((value): value is number => value != null);
+    const stochD = recentK.length < 3 ? null : recentK.reduce((sum, value) => sum + value, 0) / recentK.length;
+
+    if (index > 0) {
+      obv += close >= prevClose ? volumes[index] ?? 0 : -(volumes[index] ?? 0);
+    }
+
+    const sma20 = sma(20);
+    const sma50 = sma(50);
+    const bbStdDev = stdDev(20);
+
+    rows.push({
+      date,
+      rsi_14: rsi14,
+      macd_line: macdLine,
+      macd_signal: macdSignal,
+      macd_hist: macdHist,
+      stoch_k: stochK,
+      stoch_d: stochD,
+      cci_20: null,
+      williams_r: null,
+      momentum_5: index >= 5 ? close - closes[index - 5]! : null,
+      sma_5: sma(5),
+      sma_10: sma(10),
+      sma_20: sma20,
+      sma_50: sma50,
+      sma_200: sma(200),
+      ema_9: null,
+      ema_12: ema12,
+      ema_26: ema26,
+      ema_200: null,
+      adx_14: null,
+      plus_di: null,
+      minus_di: null,
+      slope_20: null,
+      acceleration: null,
+      atr_14: null,
+      bb_upper: sma20 != null && bbStdDev != null ? sma20 + bbStdDev * 2 : null,
+      bb_lower: sma20 != null && bbStdDev != null ? sma20 - bbStdDev * 2 : null,
+      ichimoku_conversion: null,
+      ichimoku_base: null,
+      ichimoku_span_a: null,
+      ichimoku_span_b: null,
+      chandelier_long: null,
+      chandelier_short: null,
+      obv,
+      mfi_14: null,
+      kvo: null,
+    });
+  }
+
+  return rows;
+}
+
+function PriceChart({
+  history,
+  selectedPeriod,
+}: {
+  history: PricePoint[];
+  selectedPeriod: SimilarPeriod | null;
+}) {
+  const [chartSettings, setChartSettings] = useState<ChartLayoutSettings>(() => ({ ...DEFAULT_LAYOUT_SETTINGS, range: '1Y' }));
+  const [pendingIndicatorId, setPendingIndicatorId] = useState<IndicatorId | ''>('');
+  const [drawingTool, setDrawingTool] = useState<'none' | 'trendline' | 'fib' | 'xabcd' | 'long'>('none');
+  const [clearDrawingsNonce, setClearDrawingsNonce] = useState(0);
 
   const priceBars = useMemo(() => buildPriceHistoryBars(history), [history]);
-  const filteredPriceBars = useMemo(() => filterPriceHistoryByRange(priceBars, range), [priceBars, range]);
+  const indicatorRows = useMemo(() => buildComputedIndicators(priceBars), [priceBars]);
+  const filteredPriceBars = useMemo(() => filterPriceHistoryByRange(priceBars, chartSettings.range), [priceBars, chartSettings.range]);
+  const filteredIndicators = useMemo(() => filterPriceHistoryByRange(indicatorRows, chartSettings.range), [indicatorRows, chartSettings.range]);
+  const availableIndicators = useMemo(
+    () => INDICATOR_CATALOG.filter((candidate) => !chartSettings.indicators.some((indicator) => indicator.id === candidate.id)),
+    [chartSettings.indicators]
+  );
+
+  React.useEffect(() => {
+    if (availableIndicators.length === 0) {
+      setPendingIndicatorId('');
+      return;
+    }
+    if (pendingIndicatorId && availableIndicators.some((indicator) => indicator.id === pendingIndicatorId)) {
+      return;
+    }
+    setPendingIndicatorId(availableIndicators[0]?.id ?? '');
+  }, [availableIndicators, pendingIndicatorId]);
+
+  const applyPreset = (preset: IndicatorPreset) => {
+    if (preset === 'trend') {
+      setChartSettings((current) => ({
+        ...current,
+        indicators: [{ id: 'sma20', visible: true }, { id: 'sma50', visible: true }, { id: 'ema12', visible: true }, { id: 'bollinger', visible: true }],
+      }));
+      return;
+    }
+    if (preset === 'momentum') {
+      setChartSettings((current) => ({
+        ...current,
+        indicators: [{ id: 'rsi14', visible: true }, { id: 'macd', visible: true }, { id: 'stochastic', visible: true }, { id: 'obv', visible: true }],
+      }));
+      return;
+    }
+    setChartSettings({ ...DEFAULT_LAYOUT_SETTINGS, range: chartSettings.range });
+  };
 
   return (
-    <div>
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap gap-2">
-          {(['candlestick', 'line'] as ChartStyle[]).map((mode) => (
-            <Button
-              key={mode}
-              type="button"
-              size="sm"
-              variant={chartStyle === mode ? 'primary' : 'outline'}
-              onClick={() => setChartStyle(mode)}
-            >
-              {mode === 'candlestick' ? 'Candles' : 'Line'}
-            </Button>
-          ))}
+    <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+      <div className="xl:col-span-2">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap gap-2">
+              {(['candlestick', 'line'] as const).map((mode) => (
+                <Button
+                  key={mode}
+                  type="button"
+                  size="sm"
+                  variant={chartSettings.chartStyle === mode ? 'primary' : 'outline'}
+                  onClick={() => setChartSettings((current) => ({ ...current, chartStyle: mode }))}
+                >
+                  {mode === 'candlestick' ? 'Candles' : 'Line'}
+                </Button>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={drawingTool}
+                onChange={(event) => setDrawingTool(event.target.value as 'none' | 'trendline' | 'fib' | 'xabcd' | 'long')}
+                className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs text-gray-700 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="none">Drawing: None</option>
+                <option value="trendline">Trend line (2 clicks)</option>
+                <option value="fib">Fibonacci retracement (2 clicks)</option>
+                <option value="xabcd">XABCD pattern (5 clicks)</option>
+                <option value="long">Long position (2 clicks)</option>
+              </select>
+              <Button type="button" size="sm" variant="outline" onClick={() => setClearDrawingsNonce((current) => current + 1)}>
+                Clear drawings
+              </Button>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {PRICE_HISTORY_RANGES.map((nextRange) => (
+              <Button
+                key={nextRange}
+                type="button"
+                size="sm"
+                variant={chartSettings.range === nextRange ? 'primary' : 'outline'}
+                onClick={() => setChartSettings((current) => ({ ...current, range: nextRange }))}
+              >
+                {nextRange}
+              </Button>
+            ))}
+          </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {PRICE_HISTORY_RANGES.map((nextRange) => (
-            <Button
-              key={nextRange}
-              type="button"
-              size="sm"
-              variant={range === nextRange ? 'primary' : 'outline'}
-              onClick={() => setRange(nextRange)}
-            >
-              {nextRange}
-            </Button>
-          ))}
-        </div>
+        <MarketChartCanvas
+          priceBars={filteredPriceBars}
+          indicators={filteredIndicators}
+          highlightedRange={
+            selectedPeriod
+              ? {
+                  startDate: toDateKey(selectedPeriod.start_date) ?? selectedPeriod.start_date,
+                  endDate: toDateKey(selectedPeriod.end_date) ?? selectedPeriod.end_date,
+                }
+              : null
+          }
+          drawingTool={drawingTool}
+          clearDrawingsNonce={clearDrawingsNonce}
+          settings={chartSettings}
+          emptyMessage="No price history is available for this symbol yet."
+        />
       </div>
-
-      <MarketChartCanvas
-        priceBars={filteredPriceBars}
-        indicators={[]}
-        settings={{
-          chartStyle,
-          range,
-          showVolume: true,
-          indicators: [],
+      <MarketChartToolsPanel
+        chartSettings={chartSettings}
+        availableIndicators={availableIndicators}
+        pendingIndicatorId={pendingIndicatorId}
+        onPendingIndicatorChange={setPendingIndicatorId}
+        onAddIndicator={() => {
+          if (!pendingIndicatorId) return;
+          getIndicatorMeta(pendingIndicatorId);
+          setChartSettings((current) => ({
+            ...current,
+            indicators: upsertIndicator(current.indicators, { id: pendingIndicatorId, visible: true }),
+          }));
         }}
-        emptyMessage="No price history is available for this symbol yet."
+        onApplyPreset={applyPreset}
+        onToggleIndicatorVisibility={(indicatorId) => {
+          setChartSettings((current) => ({
+            ...current,
+            indicators: current.indicators.map((indicator) => (indicator.id === indicatorId ? { ...indicator, visible: !indicator.visible } : indicator)),
+          }));
+        }}
+        onRemoveIndicator={(indicatorId) => {
+          setChartSettings((current) => ({
+            ...current,
+            indicators: current.indicators.filter((indicator) => indicator.id !== indicatorId),
+          }));
+        }}
+        onToggleVolume={() => setChartSettings((current) => ({ ...current, showVolume: !current.showVolume }))}
       />
     </div>
   );
@@ -249,6 +474,7 @@ export default function Stock360Page() {
 
   const [inputValue, setInputValue] = useState(initialSymbol);
   const [activeSymbol, setActiveSymbol] = useState(initialSymbol);
+  const [selectedPatternIndex, setSelectedPatternIndex] = useState<number>(-1);
 
   const { data, isLoading, isError, refetch } = useStock360View(activeSymbol, simulationDate);
 
@@ -258,6 +484,12 @@ export default function Stock360Page() {
   };
 
   const signal = data ? SIGNAL_STYLE[data.signal] ?? SIGNAL_STYLE.HOLD : null;
+  const selectedSimilarPeriod =
+    data && selectedPatternIndex >= 0 && selectedPatternIndex < data.similar_periods.length ? data.similar_periods[selectedPatternIndex] : null;
+
+  React.useEffect(() => {
+    setSelectedPatternIndex(-1);
+  }, [activeSymbol]);
 
   return (
     <div className="max-w-6xl mx-auto space-y-6 py-6 px-4">
@@ -408,7 +640,7 @@ export default function Stock360Page() {
           <Card>
             <CardContent className="p-5">
               <h3 className="text-sm font-semibold text-gray-700 mb-4">Price History</h3>
-              <PriceChart history={data.price_history} />
+              <PriceChart history={data.price_history} selectedPeriod={selectedSimilarPeriod} />
             </CardContent>
           </Card>
 
@@ -535,10 +767,42 @@ export default function Stock360Page() {
                     <h3 className="text-sm font-semibold text-gray-700">Similar Historical Patterns</h3>
                     <p className="text-xs text-gray-400 mt-0.5">Periods with similar indicator fingerprints — shows what happened next</p>
                   </div>
+                  <div className="w-72">
+                    <label htmlFor="pattern-select" className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">
+                      Highlight on chart
+                    </label>
+                    <select
+                      id="pattern-select"
+                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      value={selectedPatternIndex}
+                      onChange={(event) => setSelectedPatternIndex(Number.parseInt(event.target.value, 10))}
+                    >
+                      <option value={-1}>None</option>
+                      {data.similar_periods.map((period, index) => (
+                        <option key={`${period.start_date}-${period.end_date}-${index}`} value={index}>
+                          {period.start_date} → {period.end_date} ({period.similarity_score}%)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                   {data.similar_periods.map((p, i) => (
-                    <SimilarPeriodCard key={i} period={p} />
+                    <div
+                      key={i}
+                      role="button"
+                      tabIndex={0}
+                      className={`rounded-lg transition-all ${selectedPatternIndex === i ? 'ring-2 ring-amber-400 ring-offset-2' : ''}`}
+                      onClick={() => setSelectedPatternIndex(i)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          setSelectedPatternIndex(i);
+                        }
+                      }}
+                    >
+                      <SimilarPeriodCard period={p} />
+                    </div>
                   ))}
                 </div>
                 <div className="mt-4 p-3 bg-amber-50 rounded-lg text-xs text-amber-700">
