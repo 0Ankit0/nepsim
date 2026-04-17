@@ -8,8 +8,10 @@ import type {
   IndicatorCatalogEntry,
   IndicatorId,
   IndicatorPreset,
+  OverlayCatalogEntry,
+  OverlayId,
 } from './chart-config';
-import { getIndicatorMeta } from './chart-config';
+import { getIndicatorMeta, getOverlayMeta } from './chart-config';
 
 interface MarketChartToolsPanelProps {
   chartSettings: ChartLayoutSettings;
@@ -21,6 +23,11 @@ interface MarketChartToolsPanelProps {
   onToggleIndicatorVisibility: (indicatorId: IndicatorId) => void;
   onRemoveIndicator: (indicatorId: IndicatorId) => void;
   onToggleVolume: () => void;
+  availableOverlays: OverlayCatalogEntry[];
+  pendingOverlayId: OverlayId | '';
+  onPendingOverlayChange: (value: OverlayId | '') => void;
+  onAddOverlay: () => void;
+  onClearOverlays: () => void;
 }
 
 export function MarketChartToolsPanel({
@@ -33,6 +40,11 @@ export function MarketChartToolsPanel({
   onToggleIndicatorVisibility,
   onRemoveIndicator,
   onToggleVolume,
+  availableOverlays,
+  pendingOverlayId,
+  onPendingOverlayChange,
+  onAddOverlay,
+  onClearOverlays,
 }: MarketChartToolsPanelProps) {
   return (
     <Card className="shadow-sm border-gray-100">
@@ -44,7 +56,7 @@ export function MarketChartToolsPanel({
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="text-sm font-semibold text-gray-800">Volume panel</p>
-              <p className="text-xs text-gray-500">Keep daily traded volume visible below price.</p>
+              <p className="text-xs text-gray-500">Toggle the built-in VOL pane without changing your saved indicator stack.</p>
             </div>
             <Button type="button" size="sm" variant={chartSettings.showVolume ? 'primary' : 'outline'} onClick={onToggleVolume}>
               {chartSettings.showVolume ? 'Hide' : 'Show'}
@@ -77,6 +89,33 @@ export function MarketChartToolsPanel({
               <Plus className="mr-1 h-4 w-4" /> Add
             </Button>
           </div>
+        </div>
+
+        <div className="space-y-2">
+          <label htmlFor="overlay-picker" className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+            Add drawing tool
+          </label>
+          <div className="flex gap-2">
+            <select
+              id="overlay-picker"
+              value={pendingOverlayId}
+              onChange={(event) => onPendingOverlayChange(event.target.value as OverlayId | '')}
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {availableOverlays.map((overlay) => (
+                <option key={overlay.id} value={overlay.id}>
+                  {overlay.label}
+                </option>
+              ))}
+            </select>
+            <Button type="button" size="sm" variant="outline" onClick={onAddOverlay} disabled={!pendingOverlayId}>
+              Draw
+            </Button>
+          </div>
+          {pendingOverlayId && <p className="text-[11px] text-gray-400">{getOverlayMeta(pendingOverlayId).description}</p>}
+          <Button type="button" size="sm" variant="ghost" className="px-0 text-gray-500 hover:text-gray-700" onClick={onClearOverlays}>
+            Clear drawings
+          </Button>
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -121,6 +160,7 @@ export function MarketChartToolsPanel({
                           )}
                         </div>
                         <p className="mt-1 text-xs text-gray-500">{meta.description}</p>
+                        <p className="mt-2 text-[11px] text-gray-400">{meta.settings.join(' · ')}</p>
                       </div>
 
                       <div className="flex items-center gap-1">

@@ -16,11 +16,13 @@ import {
   getIndicatorMeta,
   INDICATOR_CATALOG,
   LAYOUT_STORAGE_KEY,
+  OVERLAY_CATALOG,
   normalizeStoredLayout,
   upsertIndicator,
   type IndicatorId,
   type IndicatorPreset,
   type LayoutNotice,
+  type OverlayId,
   type SavedChartLayout,
 } from '@/components/market-chart/chart-config';
 import { MarketChartLayoutsPanel } from '@/components/market-chart/layouts-panel';
@@ -67,6 +69,9 @@ function SymbolDashboard({ symbol }: { symbol: string }) {
   const [savedLayouts, setSavedLayouts] = useState<SavedChartLayout[]>([]);
   const [chartSettings, setChartSettings] = useState(() => cloneSettings(DEFAULT_LAYOUT_SETTINGS));
   const [pendingIndicatorId, setPendingIndicatorId] = useState<IndicatorId | ''>('');
+  const [pendingOverlayId, setPendingOverlayId] = useState<OverlayId | ''>(OVERLAY_CATALOG[0]?.id ?? '');
+  const [createOverlayNonce, setCreateOverlayNonce] = useState(0);
+  const [clearDrawingsNonce, setClearDrawingsNonce] = useState(0);
 
   useEffect(() => {
     setSymbolSearch(symbol);
@@ -130,7 +135,6 @@ function SymbolDashboard({ symbol }: { symbol: string }) {
   }, [history?.data, liveQuote, simulationDate, symbol]);
 
   const filteredPriceBars = useMemo(() => filterByRange(priceBars, chartSettings.range), [chartSettings.range, priceBars]);
-  const filteredIndicators = useMemo(() => filterByRange(indicators, chartSettings.range), [chartSettings.range, indicators]);
 
   const latestIndicatorSnapshot = indicators.length > 0 ? indicators[indicators.length - 1] : null;
 
@@ -251,27 +255,37 @@ function SymbolDashboard({ symbol }: { symbol: string }) {
       setChartSettings((current) => ({
         ...current,
         indicators: [
-          { id: 'sma20', visible: true },
-          { id: 'sma50', visible: true },
-          { id: 'ema12', visible: true },
-          { id: 'bollinger', visible: true },
-          { id: 'adx', visible: true },
+          { id: 'MA', visible: true },
+          { id: 'EMA', visible: true },
+          { id: 'SMA', visible: true },
+          { id: 'BBI', visible: true },
+          { id: 'BOLL', visible: true },
+          { id: 'SAR', visible: true },
+          { id: 'DMI', visible: true },
         ],
       }));
       setLayoutNotice(createLayoutNotice('success', 'Trend preset applied.'));
       return;
     }
 
-    setChartSettings((current) => ({
-      ...current,
-      indicators: [
-        { id: 'rsi14', visible: true },
-        { id: 'macd', visible: true },
-        { id: 'stochastic', visible: true },
-        { id: 'obv', visible: true },
-      ],
-    }));
-    setLayoutNotice(createLayoutNotice('success', 'Momentum preset applied.'));
+    if (preset === 'momentum') {
+      setChartSettings((current) => ({
+        ...current,
+        indicators: [
+          { id: 'RSI', visible: true },
+          { id: 'MACD', visible: true },
+          { id: 'KDJ', visible: true },
+          { id: 'ROC', visible: true },
+          { id: 'MTM', visible: true },
+          { id: 'AO', visible: true },
+        ],
+      }));
+      setLayoutNotice(createLayoutNotice('success', 'Momentum preset applied.'));
+      return;
+    }
+
+    setChartSettings(cloneSettings(DEFAULT_LAYOUT_SETTINGS));
+    setLayoutNotice(createLayoutNotice('info', 'Chart settings were reset to the default layout.'));
   };
 
   const handleSaveLayout = () => {
@@ -404,6 +418,7 @@ function SymbolDashboard({ symbol }: { symbol: string }) {
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         <MarketChartCard
+          symbol={symbol}
           symbolSearch={symbolSearch}
           onSymbolSearchChange={(value) => {
             setSymbolSearch(value);
@@ -418,8 +433,10 @@ function SymbolDashboard({ symbol }: { symbol: string }) {
           chartSettings={chartSettings}
           onChartStyleChange={(chartStyle) => setChartSettings((current) => ({ ...current, chartStyle }))}
           onRangeChange={(range) => setChartSettings((current) => ({ ...current, range }))}
+          pendingOverlayId={pendingOverlayId}
+          createOverlayNonce={createOverlayNonce}
+          clearDrawingsNonce={clearDrawingsNonce}
           priceBars={filteredPriceBars}
-          indicators={filteredIndicators}
           isHistoryLoading={isHistoryLoading}
           isIndicatorHistoryLoading={isIndicatorHistoryLoading}
         />
@@ -435,6 +452,21 @@ function SymbolDashboard({ symbol }: { symbol: string }) {
             onToggleIndicatorVisibility={handleToggleIndicatorVisibility}
             onRemoveIndicator={handleRemoveIndicator}
             onToggleVolume={handleToggleVolume}
+            availableOverlays={OVERLAY_CATALOG}
+            pendingOverlayId={pendingOverlayId}
+            onPendingOverlayChange={setPendingOverlayId}
+            onAddOverlay={() => {
+              if (!pendingOverlayId) {
+                setLayoutNotice(createLayoutNotice('info', 'Pick a drawing tool before adding it to the chart.'));
+                return;
+              }
+              setCreateOverlayNonce((current) => current + 1);
+              setLayoutNotice(createLayoutNotice('success', 'Drawing tool armed on the chart. Click inside the chart to place it.'));
+            }}
+            onClearOverlays={() => {
+              setClearDrawingsNonce((current) => current + 1);
+              setLayoutNotice(createLayoutNotice('info', 'Chart drawings were cleared.'));
+            }}
           />
 
           <MarketChartLayoutsPanel
@@ -558,6 +590,14 @@ function SymbolDashboard({ symbol }: { symbol: string }) {
               <div>
                 <div className="text-gray-500 text-xs uppercase tracking-wider">ADX (14)</div>
                 <div className="font-mono font-bold">{formatNumber(latestIndicatorSnapshot?.adx_14)}</div>
+              </div>
+              <div>
+                <div className="text-gray-500 text-xs uppercase tracking-wider">ATR (14)</div>
+                <div className="font-mono font-bold">{formatNumber(latestIndicatorSnapshot?.atr_14)}</div>
+              </div>
+              <div>
+                <div className="text-gray-500 text-xs uppercase tracking-wider">Rel. Volume</div>
+                <div className="font-mono font-bold">{formatNumber(latestIndicatorSnapshot?.volume_ratio_20)}</div>
               </div>
             </CardContent>
           </Card>

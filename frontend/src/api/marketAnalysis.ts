@@ -1,4 +1,5 @@
 import { apiClient } from '@/lib/api-client';
+import type { IndicatorRow } from './market';
 
 export interface AnalysisResult {
   symbol: string;
@@ -118,6 +119,7 @@ export interface Stock360View {
   stop_loss?: number;
   risk_reward_ratio?: number;
   indicator_signals: IndicatorSignal[];
+  indicator_history: IndicatorRow[];
   performance: PerformanceMetrics;
   trend_analysis: TrendAnalysis;
   similar_periods: SimilarPeriod[];

@@ -1,732 +1,613 @@
 'use client';
 
-import {
-  CandlestickSeries,
-  ColorType,
-  createChart,
-  HistogramSeries,
-  LineSeries,
-  LineStyle,
-  type CandlestickData,
-  type HistogramData,
-  type Time,
-} from 'lightweight-charts';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { IndicatorRow } from '@/api/market';
-import type { ChartLayoutSettings, PriceBar } from './chart-config';
+import type { Chart, DeepPartial, KLineData, OverlayCreate, Styles } from 'klinecharts';
+import type { ChartLayoutSettings, ChartStyle, OverlayId, PriceBar } from './chart-config';
 import { getIndicatorMeta } from './chart-config';
-import { makeConstantLineData, makeLineData } from './data-utils';
 
 interface MarketChartCanvasProps {
+  symbol?: string;
   priceBars: PriceBar[];
-  indicators: IndicatorRow[];
   settings: ChartLayoutSettings;
   highlightedRange?: {
     startDate: string;
     endDate: string;
   } | null;
-  drawingTool?: 'none' | 'trendline' | 'fib' | 'xabcd' | 'long';
+  pendingOverlayId?: OverlayId | '';
+  createOverlayNonce?: number;
   clearDrawingsNonce?: number;
   isLoading?: boolean;
   emptyMessage?: string;
 }
 
+const DRAWING_GROUP_ID = 'user-drawings';
+const HIGHLIGHT_GROUP_ID = 'selected-range';
+
+function inferPricePrecision(priceBars: PriceBar[]): number {
+  let maxPrecision = 0;
+
+  for (const bar of priceBars) {
+    for (const value of [bar.open, bar.high, bar.low, bar.close]) {
+      const text = String(value);
+      const decimals = text.includes('.') ? text.split('.')[1]?.length ?? 0 : 0;
+      if (decimals > maxPrecision) {
+        maxPrecision = decimals;
+      }
+    }
+  }
+
+  return Math.min(Math.max(maxPrecision, 2), 4);
+}
+
+function toCandleType(chartStyle: ChartStyle): 'candle_solid' | 'candle_stroke' | 'ohlc' | 'area' {
+  if (chartStyle === 'hollow') {
+    return 'candle_stroke';
+  }
+  if (chartStyle === 'ohlc') {
+    return 'ohlc';
+  }
+  if (chartStyle === 'area') {
+    return 'area';
+  }
+  return 'candle_solid';
+}
+
+function buildChartStyles(chartStyle: ChartStyle): DeepPartial<Styles> {
+  return {
+    grid: {
+      show: true,
+      horizontal: { show: true, size: 1, color: '#eef2f7', style: 'dashed', dashedValue: [4, 4] },
+      vertical: { show: true, size: 1, color: '#eef2f7', style: 'dashed', dashedValue: [4, 4] },
+    },
+    candle: {
+      type: toCandleType(chartStyle),
+      bar: {
+        compareRule: 'current_open',
+        upColor: '#10b981',
+        downColor: '#f43f5e',
+        noChangeColor: '#94a3b8',
+        upBorderColor: '#10b981',
+        downBorderColor: '#f43f5e',
+        noChangeBorderColor: '#94a3b8',
+        upWickColor: '#10b981',
+        downWickColor: '#f43f5e',
+        noChangeWickColor: '#94a3b8',
+      },
+      area: {
+        lineSize: 2,
+        lineColor: '#2563eb',
+        smooth: false,
+        value: 'close',
+        backgroundColor: [
+          { offset: 0, color: 'rgba(37, 99, 235, 0.02)' },
+          { offset: 1, color: 'rgba(37, 99, 235, 0.24)' },
+        ],
+        point: {
+          show: false,
+          color: '#2563eb',
+          radius: 4,
+          rippleColor: 'rgba(37, 99, 235, 0.12)',
+          rippleRadius: 8,
+          animation: true,
+          animationDuration: 1000,
+        },
+      },
+      priceMark: {
+        show: true,
+        high: { show: true, color: '#94a3b8', textOffset: 6, textSize: 11, textFamily: 'Inter', textWeight: '500' },
+        low: { show: true, color: '#94a3b8', textOffset: 6, textSize: 11, textFamily: 'Inter', textWeight: '500' },
+        last: {
+          show: true,
+          compareRule: 'current_open',
+          upColor: '#10b981',
+          downColor: '#f43f5e',
+          noChangeColor: '#94a3b8',
+          line: { show: true, style: 'dashed', dashedValue: [4, 4], size: 1 },
+          text: {
+            show: true,
+            style: 'fill',
+            color: '#ffffff',
+            size: 11,
+            family: 'Inter',
+            weight: '600',
+            borderStyle: 'solid',
+            borderSize: 0,
+            borderColor: 'transparent',
+            borderDashedValue: [2, 2],
+            paddingLeft: 6,
+            paddingTop: 4,
+            paddingRight: 6,
+            paddingBottom: 4,
+            borderRadius: 6,
+          },
+          extendTexts: [],
+        },
+      },
+      tooltip: {
+        offsetLeft: 8,
+        offsetTop: 8,
+        offsetRight: 8,
+        offsetBottom: 8,
+        showRule: 'always',
+        showType: 'standard',
+        title: {
+          show: true,
+          size: 12,
+          family: 'Inter',
+          weight: '600',
+          color: '#0f172a',
+          marginLeft: 8,
+          marginTop: 4,
+          marginRight: 8,
+          marginBottom: 2,
+          template: '{ticker} · {period}',
+        },
+        legend: {
+          size: 11,
+          family: 'Inter',
+          weight: '500',
+          color: '#475569',
+          marginLeft: 8,
+          marginTop: 2,
+          marginRight: 8,
+          marginBottom: 4,
+          defaultValue: 'n/a',
+          template: [
+            { title: 'Date', value: '{time}' },
+            { title: 'Open', value: '{open}' },
+            { title: 'High', value: '{high}' },
+            { title: 'Low', value: '{low}' },
+            { title: 'Close', value: '{close}' },
+            { title: 'Volume', value: '{volume}' },
+          ],
+        },
+        rect: {
+          position: 'fixed',
+          paddingLeft: 6,
+          paddingRight: 6,
+          paddingTop: 6,
+          paddingBottom: 6,
+          offsetLeft: 8,
+          offsetTop: 8,
+          offsetRight: 8,
+          offsetBottom: 8,
+          borderRadius: 10,
+          borderSize: 1,
+          borderColor: '#e2e8f0',
+          color: '#ffffff',
+        },
+        features: [],
+      },
+    },
+    indicator: {
+      ohlc: {
+        compareRule: 'current_open',
+        upColor: 'rgba(16, 185, 129, 0.7)',
+        downColor: 'rgba(244, 63, 94, 0.7)',
+        noChangeColor: '#94a3b8',
+      },
+      bars: [{ style: 'fill', borderStyle: 'solid', borderSize: 1, borderDashedValue: [2, 2], upColor: '#10b981', downColor: '#f43f5e', noChangeColor: '#94a3b8' }],
+      lines: [
+        { style: 'solid', smooth: false, size: 1, dashedValue: [2, 2], color: '#2563eb' },
+        { style: 'solid', smooth: false, size: 1, dashedValue: [2, 2], color: '#8b5cf6' },
+        { style: 'solid', smooth: false, size: 1, dashedValue: [2, 2], color: '#f59e0b' },
+        { style: 'solid', smooth: false, size: 1, dashedValue: [2, 2], color: '#0ea5e9' },
+        { style: 'solid', smooth: false, size: 1, dashedValue: [2, 2], color: '#ec4899' },
+      ],
+      circles: [{ style: 'fill', borderStyle: 'solid', borderSize: 1, borderDashedValue: [2, 2], upColor: '#10b981', downColor: '#f43f5e', noChangeColor: '#94a3b8' }],
+      lastValueMark: {
+        show: false,
+        text: {
+          show: false,
+          style: 'fill',
+          color: '#ffffff',
+          size: 11,
+          family: 'Inter',
+          weight: '600',
+          borderStyle: 'solid',
+          borderSize: 0,
+          borderDashedValue: [2, 2],
+          paddingLeft: 4,
+          paddingTop: 3,
+          paddingRight: 4,
+          paddingBottom: 3,
+          borderRadius: 4,
+        },
+      },
+      tooltip: {
+        offsetLeft: 8,
+        offsetTop: 6,
+        offsetRight: 8,
+        offsetBottom: 6,
+        showRule: 'always',
+        showType: 'standard',
+        title: {
+          show: true,
+          showName: true,
+          showParams: true,
+          size: 11,
+          family: 'Inter',
+          weight: '600',
+          color: '#0f172a',
+          marginLeft: 8,
+          marginTop: 4,
+          marginRight: 8,
+          marginBottom: 2,
+        },
+        legend: {
+          size: 11,
+          family: 'Inter',
+          weight: '500',
+          color: '#475569',
+          marginLeft: 8,
+          marginTop: 2,
+          marginRight: 8,
+          marginBottom: 4,
+          defaultValue: 'n/a',
+        },
+        features: [],
+      },
+    },
+    xAxis: {
+      show: true,
+      size: 'auto',
+      axisLine: { show: true, color: '#cbd5e1', size: 1 },
+      tickText: { show: true, color: '#64748b', family: 'Inter', weight: '500', size: 11, marginStart: 6, marginEnd: 6 },
+      tickLine: { show: true, size: 1, length: 3, color: '#cbd5e1' },
+    },
+    yAxis: {
+      show: true,
+      size: 'auto',
+      axisLine: { show: true, color: '#cbd5e1', size: 1 },
+      tickText: { show: true, color: '#64748b', family: 'Inter', weight: '500', size: 11, marginStart: 6, marginEnd: 6 },
+      tickLine: { show: true, size: 1, length: 3, color: '#cbd5e1' },
+    },
+    separator: {
+      size: 1,
+      color: '#e2e8f0',
+      fill: true,
+      activeBackgroundColor: 'rgba(37, 99, 235, 0.08)',
+    },
+    crosshair: {
+      show: true,
+      horizontal: {
+        show: true,
+        line: { show: true, style: 'dashed', dashedValue: [4, 4], size: 1, color: '#94a3b8' },
+        text: {
+          show: true,
+          style: 'fill',
+          color: '#ffffff',
+          size: 11,
+          family: 'Inter',
+          weight: '600',
+          borderStyle: 'solid',
+          borderDashedValue: [2, 2],
+          borderSize: 1,
+          borderColor: '#475569',
+          borderRadius: 6,
+          paddingLeft: 6,
+          paddingRight: 6,
+          paddingTop: 4,
+          paddingBottom: 4,
+          backgroundColor: '#475569',
+        },
+        features: [],
+      },
+      vertical: {
+        show: true,
+        line: { show: true, style: 'dashed', dashedValue: [4, 4], size: 1, color: '#94a3b8' },
+        text: {
+          show: true,
+          style: 'fill',
+          color: '#ffffff',
+          size: 11,
+          family: 'Inter',
+          weight: '600',
+          borderStyle: 'solid',
+          borderDashedValue: [2, 2],
+          borderSize: 1,
+          borderColor: '#475569',
+          borderRadius: 6,
+          paddingLeft: 6,
+          paddingRight: 6,
+          paddingTop: 4,
+          paddingBottom: 4,
+          backgroundColor: '#475569',
+        },
+      },
+    },
+    overlay: {
+      point: {
+        color: '#2563eb',
+        borderColor: 'rgba(37, 99, 235, 0.28)',
+        borderSize: 1,
+        radius: 5,
+        activeColor: '#2563eb',
+        activeBorderColor: 'rgba(37, 99, 235, 0.28)',
+        activeBorderSize: 3,
+        activeRadius: 5,
+      },
+      line: {
+        style: 'solid',
+        smooth: false,
+        color: '#2563eb',
+        size: 1,
+        dashedValue: [4, 4],
+      },
+      rect: {
+        style: 'fill',
+        color: 'rgba(37, 99, 235, 0.12)',
+        borderColor: '#2563eb',
+        borderSize: 1,
+        borderRadius: 0,
+        borderStyle: 'solid',
+        borderDashedValue: [2, 2],
+      },
+      polygon: {
+        style: 'fill',
+        color: 'rgba(37, 99, 235, 0.12)',
+        borderColor: '#2563eb',
+        borderSize: 1,
+        borderStyle: 'solid',
+        borderDashedValue: [2, 2],
+      },
+      circle: {
+        style: 'fill',
+        color: 'rgba(37, 99, 235, 0.12)',
+        borderColor: '#2563eb',
+        borderSize: 1,
+        borderStyle: 'solid',
+        borderDashedValue: [2, 2],
+      },
+      arc: {
+        style: 'solid',
+        color: '#2563eb',
+        size: 1,
+        dashedValue: [2, 2],
+      },
+      text: {
+        style: 'fill',
+        color: '#ffffff',
+        size: 11,
+        family: 'Inter',
+        weight: '600',
+        borderStyle: 'solid',
+        borderDashedValue: [2, 2],
+        borderSize: 0,
+        borderRadius: 4,
+        borderColor: '#2563eb',
+        paddingLeft: 4,
+        paddingRight: 4,
+        paddingTop: 2,
+        paddingBottom: 2,
+        backgroundColor: '#2563eb',
+      },
+    },
+  };
+}
+
 export function MarketChartCanvas({
+  symbol,
   priceBars,
-  indicators,
   settings,
   highlightedRange = null,
-  drawingTool = 'none',
+  pendingOverlayId = '',
+  createOverlayNonce = 0,
   clearDrawingsNonce = 0,
   isLoading = false,
   emptyMessage = 'No historic chart data is available for this symbol.',
 }: MarketChartCanvasProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
-  const [pendingDrawingPoints, setPendingDrawingPoints] = useState<Array<{ time: Time; price: number }>>([]);
-  const [drawings, setDrawings] = useState<Array<{ id: string; type: 'trendline' | 'fib' | 'xabcd' | 'long'; points: Array<{ time: Time; price: number }> }>>([]);
+  const chartRef = useRef<Chart | null>(null);
+  const disposeRef = useRef<((target: HTMLElement | Chart | string) => void) | null>(null);
+  const appliedOverlayNonceRef = useRef(0);
+  const clearedOverlayNonceRef = useRef(0);
+  const [chartReady, setChartReady] = useState(false);
 
-  const requiredPoints = useMemo(
+  const klineData = useMemo<KLineData[]>(
     () =>
-      drawingTool === 'trendline'
-        ? 2
-        : drawingTool === 'fib'
-          ? 2
-          : drawingTool === 'long'
-            ? 2
-            : drawingTool === 'xabcd'
-              ? 5
-              : 0,
-    [drawingTool]
+      priceBars.map((bar) => ({
+        timestamp: bar.timestamp,
+        open: bar.open,
+        high: bar.high,
+        low: bar.low,
+        close: bar.close,
+        volume: bar.volume,
+        turnover: bar.turnover,
+      })),
+    [priceBars]
   );
 
-  useEffect(() => {
-    setPendingDrawingPoints([]);
-  }, [drawingTool]);
+  const paneIndicatorCount = useMemo(() => {
+    const visibleIndicators = new Set(settings.indicators.filter((indicator) => indicator.visible).map((indicator) => indicator.id));
+    if (settings.showVolume) {
+      visibleIndicators.add('VOL');
+    }
+    let count = 0;
+    for (const indicatorId of visibleIndicators) {
+      if (getIndicatorMeta(indicatorId).group === 'pane') {
+        count += 1;
+      }
+    }
+    return count;
+  }, [settings.indicators, settings.showVolume]);
+
+  const chartHeight = Math.min(1180, 480 + paneIndicatorCount * 132);
 
   useEffect(() => {
-    setDrawings([]);
-    setPendingDrawingPoints([]);
-  }, [clearDrawingsNonce]);
+    let isDisposed = false;
 
-  const visiblePanelCount = useMemo(
-    () =>
-      (settings.showVolume ? 1 : 0) +
-      settings.indicators.filter((indicator) => indicator.visible && getIndicatorMeta(indicator.id).group === 'pane').length,
-    [settings.indicators, settings.showVolume]
-  );
+    async function initializeChart() {
+      if (!chartContainerRef.current) {
+        return;
+      }
 
-  const chartHeight = Math.min(980, 420 + visiblePanelCount * 140);
+      const { dispose, init } = await import('klinecharts');
+      if (isDisposed || !chartContainerRef.current) {
+        return;
+      }
+
+      disposeRef.current = dispose;
+      const chart = init(chartContainerRef.current);
+      if (!chart) {
+        return;
+      }
+
+      chartRef.current = chart;
+      chart.setOffsetRightDistance(24);
+      chart.setLeftMinVisibleBarCount(20);
+      chart.setRightMinVisibleBarCount(4);
+      chart.setZoomEnabled(true);
+      chart.setScrollEnabled(true);
+      chart.setTimezone('Asia/Kathmandu');
+      setChartReady(true);
+    }
+
+    initializeChart();
+
+    return () => {
+      isDisposed = true;
+      if (chartRef.current && disposeRef.current) {
+        disposeRef.current(chartRef.current);
+      }
+      chartRef.current = null;
+      setChartReady(false);
+    };
+  }, []);
 
   useEffect(() => {
-    if (!chartContainerRef.current || priceBars.length === 0) {
+    if (!chartReady || !chartRef.current) {
       return;
     }
 
-    const chart = createChart(chartContainerRef.current, {
-      autoSize: true,
-      layout: {
-        background: { type: ColorType.Solid, color: '#ffffff' },
-        textColor: '#4b5563',
-      },
-      grid: {
-        vertLines: { color: '#f1f5f9' },
-        horzLines: { color: '#f1f5f9' },
-      },
-      rightPriceScale: {
-        borderColor: '#e5e7eb',
-      },
-      timeScale: {
-        borderColor: '#e5e7eb',
-        timeVisible: true,
-      },
-      crosshair: {
-        vertLine: {
-          color: '#94a3b8',
-          width: 1,
-          style: LineStyle.Dashed,
-          visible: true,
-          labelVisible: true,
-        },
-        horzLine: {
-          color: '#94a3b8',
-          width: 1,
-          style: LineStyle.Dashed,
-          visible: true,
-          labelVisible: true,
-        },
+    chartRef.current.setStyles(buildChartStyles(settings.chartStyle));
+  }, [chartReady, settings.chartStyle]);
+
+  useEffect(() => {
+    if (!chartReady || !chartRef.current) {
+      return;
+    }
+
+    chartRef.current.setSymbol({
+      ticker: symbol ?? 'NEPSE',
+      pricePrecision: inferPricePrecision(priceBars),
+      volumePrecision: 0,
+    });
+    chartRef.current.setPeriod({ span: 1, type: 'day' });
+    chartRef.current.setDataLoader({
+      getBars: ({ callback }) => {
+        callback(klineData);
       },
     });
+    chartRef.current.resetData();
+    chartRef.current.scrollToRealTime(0);
+  }, [chartReady, klineData, priceBars, symbol]);
 
-    const candleData: CandlestickData<Time>[] = priceBars.map((bar) => ({
-      time: bar.time,
-      open: bar.open,
-      high: bar.high,
-      low: bar.low,
-      close: bar.close,
-    }));
-
-    const closeLineData = priceBars.map((bar) => ({
-      time: bar.time,
-      value: bar.close,
-    }));
-
-    let primarySeries;
-
-    if (settings.chartStyle === 'candlestick') {
-      const series = chart.addSeries(
-        CandlestickSeries,
-        {
-          upColor: '#10b981',
-          downColor: '#f43f5e',
-          borderVisible: false,
-          wickUpColor: '#10b981',
-          wickDownColor: '#f43f5e',
-          priceLineVisible: false,
-        },
-        0
-      );
-      series.setData(candleData);
-      primarySeries = series;
-    } else {
-      const series = chart.addSeries(
-        LineSeries,
-        {
-          color: '#2563eb',
-          lineWidth: 2,
-          crosshairMarkerVisible: false,
-          lastValueVisible: true,
-          priceLineVisible: false,
-        },
-        0
-      );
-      series.setData(closeLineData);
-      primarySeries = series;
+  useEffect(() => {
+    if (!chartReady || !chartRef.current) {
+      return;
     }
 
-    if (highlightedRange) {
-      const start = highlightedRange.startDate;
-      const end = highlightedRange.endDate;
-
-      const highlightedCloseData = priceBars.flatMap((bar) => {
-        if (bar.date < start || bar.date > end) {
-          return [];
-        }
-
-        return [{ time: bar.time, value: bar.close }];
-      });
-
-      if (highlightedCloseData.length > 0) {
-        const highlightedSeries = chart.addSeries(
-          LineSeries,
-          {
-            color: '#f59e0b',
-            lineWidth: 4,
-            crosshairMarkerVisible: false,
-            lastValueVisible: false,
-            priceLineVisible: false,
-          },
-          0
-        );
-        highlightedSeries.setData(highlightedCloseData);
-      }
+    for (const indicator of chartRef.current.getIndicators()) {
+      chartRef.current.removeIndicator({ id: indicator.id });
     }
 
-    const renderTime = (value: Time) => {
-      if (typeof value === 'string') return value;
-      if (typeof value === 'number') return value;
-      return `${value.year}-${String(value.month).padStart(2, '0')}-${String(value.day).padStart(2, '0')}`;
-    };
-
-    for (const drawing of drawings) {
-      if (drawing.type === 'trendline' && drawing.points.length >= 2) {
-        const trendLine = chart.addSeries(
-          LineSeries,
-          { color: '#0ea5e9', lineWidth: 2, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false },
-          0
-        );
-        trendLine.setData(drawing.points.slice(0, 2).map((point) => ({ time: point.time, value: point.price })));
-      }
-
-      if (drawing.type === 'fib' && drawing.points.length >= 2) {
-        const [pointA, pointB] = drawing.points;
-        const levels = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
-        const span = pointB.price - pointA.price;
-        const startTime = renderTime(pointA.time) <= renderTime(pointB.time) ? pointA.time : pointB.time;
-        const endTime = renderTime(pointA.time) <= renderTime(pointB.time) ? pointB.time : pointA.time;
-
-        for (const level of levels) {
-          const fibLine = chart.addSeries(
-            LineSeries,
-            {
-              color: '#a855f7',
-              lineWidth: level === 0 || level === 1 ? 2 : 1,
-              lineStyle: LineStyle.Dashed,
-              crosshairMarkerVisible: false,
-              lastValueVisible: false,
-              priceLineVisible: false,
-            },
-            0
-          );
-          fibLine.setData([
-            { time: startTime, value: pointA.price + span * level },
-            { time: endTime, value: pointA.price + span * level },
-          ]);
-        }
-      }
-
-      if (drawing.type === 'xabcd' && drawing.points.length >= 5) {
-        const xabcdLine = chart.addSeries(
-          LineSeries,
-          { color: '#f97316', lineWidth: 2, crosshairMarkerVisible: true, lastValueVisible: false, priceLineVisible: false },
-          0
-        );
-        xabcdLine.setData(drawing.points.map((point) => ({ time: point.time, value: point.price })));
-      }
-
-      if (drawing.type === 'long' && drawing.points.length >= 2) {
-        const [entryPoint, targetPoint] = drawing.points;
-        const priceDistance = targetPoint.price - entryPoint.price;
-        const stopPrice = entryPoint.price - Math.abs(priceDistance);
-        const startTime = renderTime(entryPoint.time) <= renderTime(targetPoint.time) ? entryPoint.time : targetPoint.time;
-        const endTime = renderTime(entryPoint.time) <= renderTime(targetPoint.time) ? targetPoint.time : entryPoint.time;
-        const levels = [
-          { price: entryPoint.price, color: '#2563eb' },
-          { price: targetPoint.price, color: '#16a34a' },
-          { price: stopPrice, color: '#dc2626' },
-        ];
-
-        for (const level of levels) {
-          const levelSeries = chart.addSeries(
-            LineSeries,
-            {
-              color: level.color,
-              lineWidth: 2,
-              lineStyle: LineStyle.Dashed,
-              crosshairMarkerVisible: false,
-              lastValueVisible: false,
-              priceLineVisible: false,
-            },
-            0
-          );
-          levelSeries.setData([
-            { time: startTime, value: level.price },
-            { time: endTime, value: level.price },
-          ]);
-        }
-      }
-    }
-
-    if (pendingDrawingPoints.length > 0) {
-      const pendingSeries = chart.addSeries(
-        LineSeries,
-        {
-          color: '#64748b',
-          lineWidth: 1,
-          lineStyle: LineStyle.Dotted,
-          crosshairMarkerVisible: true,
-          lastValueVisible: false,
-          priceLineVisible: false,
-        },
-        0
-      );
-      pendingSeries.setData(pendingDrawingPoints.map((point) => ({ time: point.time, value: point.price })));
-    }
-
-    chart.subscribeClick((param) => {
-      if (drawingTool === 'none' || !param.point || param.time == null || !primarySeries) {
-        return;
-      }
-
-      const price = primarySeries.coordinateToPrice(param.point.y);
-      if (price == null || !Number.isFinite(price)) {
-        return;
-      }
-
-      setPendingDrawingPoints((current) => {
-        const nextPoints = [...current, { time: param.time as Time, price }];
-        if (requiredPoints > 0 && nextPoints.length >= requiredPoints) {
-          setDrawings((existing) => [
-            ...existing,
-            {
-              id: `drawing-${Date.now()}-${Math.round(Math.random() * 1_000_000)}`,
-              type: drawingTool as 'trendline' | 'fib' | 'xabcd' | 'long',
-              points: nextPoints,
-            },
-          ]);
-          return [];
-        }
-        return nextPoints;
-      });
-    });
-
-    const overlayIndicators = settings.indicators.filter(
-      (indicator) => indicator.visible && getIndicatorMeta(indicator.id).group === 'overlay'
-    );
-
-    for (const indicator of overlayIndicators) {
-      switch (indicator.id) {
-        case 'sma20': {
-          const series = chart.addSeries(
-            LineSeries,
-            {
-              color: '#8b5cf6',
-              lineWidth: 2,
-              crosshairMarkerVisible: false,
-              lastValueVisible: false,
-              priceLineVisible: false,
-            },
-            0
-          );
-          series.setData(makeLineData(indicators, (row) => row.sma_20));
-          break;
-        }
-        case 'sma50': {
-          const series = chart.addSeries(
-            LineSeries,
-            {
-              color: '#f97316',
-              lineWidth: 2,
-              crosshairMarkerVisible: false,
-              lastValueVisible: false,
-              priceLineVisible: false,
-            },
-            0
-          );
-          series.setData(makeLineData(indicators, (row) => row.sma_50));
-          break;
-        }
-        case 'ema12': {
-          const series = chart.addSeries(
-            LineSeries,
-            {
-              color: '#06b6d4',
-              lineWidth: 2,
-              crosshairMarkerVisible: false,
-              lastValueVisible: false,
-              priceLineVisible: false,
-            },
-            0
-          );
-          series.setData(makeLineData(indicators, (row) => row.ema_12));
-          break;
-        }
-        case 'ema26': {
-          const series = chart.addSeries(
-            LineSeries,
-            {
-              color: '#ec4899',
-              lineWidth: 2,
-              crosshairMarkerVisible: false,
-              lastValueVisible: false,
-              priceLineVisible: false,
-            },
-            0
-          );
-          series.setData(makeLineData(indicators, (row) => row.ema_26));
-          break;
-        }
-        case 'bollinger': {
-          const upperBand = chart.addSeries(
-            LineSeries,
-            {
-              color: '#14b8a6',
-              lineWidth: 1,
-              crosshairMarkerVisible: false,
-              lastValueVisible: false,
-              priceLineVisible: false,
-            },
-            0
-          );
-          upperBand.setData(makeLineData(indicators, (row) => row.bb_upper));
-
-          const lowerBand = chart.addSeries(
-            LineSeries,
-            {
-              color: '#14b8a6',
-              lineWidth: 1,
-              lineStyle: LineStyle.Dotted,
-              crosshairMarkerVisible: false,
-              lastValueVisible: false,
-              priceLineVisible: false,
-            },
-            0
-          );
-          lowerBand.setData(makeLineData(indicators, (row) => row.bb_lower));
-          break;
-        }
-        default:
-          break;
-      }
-    }
-
-    let nextPaneIndex = 1;
-
+    const requestedIndicators = new Set(settings.indicators.filter((indicator) => indicator.visible).map((indicator) => indicator.id));
     if (settings.showVolume) {
-      const volumeData: HistogramData<Time>[] = priceBars.map((bar) => ({
-        time: bar.time,
-        value: bar.volume,
-        color: bar.close >= bar.open ? '#10b98166' : '#f43f5e66',
+      requestedIndicators.add('VOL');
+    }
+
+    let paneOrder = 1;
+    for (const indicatorId of requestedIndicators) {
+      const meta = getIndicatorMeta(indicatorId);
+      if (meta.group === 'overlay') {
+        chartRef.current.createIndicator(indicatorId, true, { id: 'candle_pane' });
+        continue;
+      }
+
+      chartRef.current.createIndicator(indicatorId, false, {
+        id: `pane-${indicatorId.toLowerCase()}`,
+        order: paneOrder,
+        height: indicatorId === 'VOL' ? 150 : 132,
+        minHeight: 88,
+        dragEnabled: true,
+      });
+      paneOrder += 1;
+    }
+  }, [chartReady, settings.indicators, settings.showVolume]);
+
+  useEffect(() => {
+    if (!chartReady || !chartRef.current) {
+      return;
+    }
+
+    chartRef.current.removeOverlay({ groupId: HIGHLIGHT_GROUP_ID });
+    if (!highlightedRange) {
+      return;
+    }
+
+    const startBar = priceBars.find((bar) => bar.date === highlightedRange.startDate);
+    const endBar = priceBars.find((bar) => bar.date === highlightedRange.endDate);
+    const overlays: OverlayCreate[] = [startBar, endBar]
+      .filter((bar): bar is PriceBar => Boolean(bar))
+      .map((bar, index) => ({
+        name: 'verticalStraightLine' as const,
+        id: `${HIGHLIGHT_GROUP_ID}-${index}`,
+        groupId: HIGHLIGHT_GROUP_ID,
+        lock: true,
+        points: [{ timestamp: bar.timestamp, value: bar.close }],
+        styles: {
+          line: {
+            color: '#f59e0b',
+            style: 'dashed',
+            size: 1,
+            dashedValue: [4, 4],
+          },
+        },
       }));
 
-      const volumeSeries = chart.addSeries(
-        HistogramSeries,
-        {
-          color: '#94a3b8',
-          priceFormat: { type: 'volume' },
-          lastValueVisible: false,
-          priceLineVisible: false,
-        },
-        nextPaneIndex
-      );
-      volumeSeries.setData(volumeData);
-      volumeSeries.priceScale().applyOptions({
-        scaleMargins: { top: 0.15, bottom: 0 },
-      });
-      nextPaneIndex += 1;
+    if (overlays.length > 0) {
+      chartRef.current.createOverlay(overlays);
+    }
+  }, [chartReady, highlightedRange, priceBars]);
+
+  useEffect(() => {
+    if (!chartReady || !chartRef.current || !pendingOverlayId || createOverlayNonce === 0 || createOverlayNonce === appliedOverlayNonceRef.current) {
+      return;
     }
 
-    const panelIndicators = settings.indicators.filter(
-      (indicator) => indicator.visible && getIndicatorMeta(indicator.id).group === 'pane'
-    );
-
-    for (const indicator of panelIndicators) {
-      switch (indicator.id) {
-        case 'rsi14': {
-          const rsiSeries = chart.addSeries(
-            LineSeries,
-            {
-              color: '#7c3aed',
-              lineWidth: 2,
-              crosshairMarkerVisible: false,
-              lastValueVisible: false,
-              priceLineVisible: false,
-            },
-            nextPaneIndex
-          );
-          rsiSeries.setData(makeLineData(indicators, (row) => row.rsi_14));
-          rsiSeries.priceScale().applyOptions({
-            scaleMargins: { top: 0.15, bottom: 0.15 },
-          });
-
-          const upperGuide = chart.addSeries(
-            LineSeries,
-            {
-              color: '#cbd5e1',
-              lineWidth: 1,
-              lineStyle: LineStyle.Dashed,
-              crosshairMarkerVisible: false,
-              lastValueVisible: false,
-              priceLineVisible: false,
-            },
-            nextPaneIndex
-          );
-          upperGuide.setData(makeConstantLineData(indicators, 70));
-
-          const lowerGuide = chart.addSeries(
-            LineSeries,
-            {
-              color: '#cbd5e1',
-              lineWidth: 1,
-              lineStyle: LineStyle.Dashed,
-              crosshairMarkerVisible: false,
-              lastValueVisible: false,
-              priceLineVisible: false,
-            },
-            nextPaneIndex
-          );
-          lowerGuide.setData(makeConstantLineData(indicators, 30));
-          nextPaneIndex += 1;
-          break;
-        }
-        case 'macd': {
-          const histogram = chart.addSeries(
-            HistogramSeries,
-            {
-              color: '#94a3b8',
-              lastValueVisible: false,
-              priceLineVisible: false,
-            },
-            nextPaneIndex
-          );
-          histogram.setData(
-            indicators.flatMap((row) => {
-              if (!row.date || row.macd_hist == null) {
-                return [];
-              }
-
-              return [
-                {
-                  time: row.date,
-                  value: row.macd_hist,
-                  color: row.macd_hist >= 0 ? '#10b98199' : '#f43f5e99',
-                },
-              ];
-            })
-          );
-
-          const macdLine = chart.addSeries(
-            LineSeries,
-            {
-              color: '#2563eb',
-              lineWidth: 2,
-              crosshairMarkerVisible: false,
-              lastValueVisible: false,
-              priceLineVisible: false,
-            },
-            nextPaneIndex
-          );
-          macdLine.setData(makeLineData(indicators, (row) => row.macd_line));
-
-          const signalLine = chart.addSeries(
-            LineSeries,
-            {
-              color: '#f97316',
-              lineWidth: 2,
-              crosshairMarkerVisible: false,
-              lastValueVisible: false,
-              priceLineVisible: false,
-            },
-            nextPaneIndex
-          );
-          signalLine.setData(makeLineData(indicators, (row) => row.macd_signal));
-          nextPaneIndex += 1;
-          break;
-        }
-        case 'stochastic': {
-          const kSeries = chart.addSeries(
-            LineSeries,
-            {
-              color: '#2563eb',
-              lineWidth: 2,
-              crosshairMarkerVisible: false,
-              lastValueVisible: false,
-              priceLineVisible: false,
-            },
-            nextPaneIndex
-          );
-          kSeries.setData(makeLineData(indicators, (row) => row.stoch_k));
-
-          const dSeries = chart.addSeries(
-            LineSeries,
-            {
-              color: '#ec4899',
-              lineWidth: 2,
-              crosshairMarkerVisible: false,
-              lastValueVisible: false,
-              priceLineVisible: false,
-            },
-            nextPaneIndex
-          );
-          dSeries.setData(makeLineData(indicators, (row) => row.stoch_d));
-
-          const upperGuide = chart.addSeries(
-            LineSeries,
-            {
-              color: '#cbd5e1',
-              lineWidth: 1,
-              lineStyle: LineStyle.Dashed,
-              crosshairMarkerVisible: false,
-              lastValueVisible: false,
-              priceLineVisible: false,
-            },
-            nextPaneIndex
-          );
-          upperGuide.setData(makeConstantLineData(indicators, 80));
-
-          const lowerGuide = chart.addSeries(
-            LineSeries,
-            {
-              color: '#cbd5e1',
-              lineWidth: 1,
-              lineStyle: LineStyle.Dashed,
-              crosshairMarkerVisible: false,
-              lastValueVisible: false,
-              priceLineVisible: false,
-            },
-            nextPaneIndex
-          );
-          lowerGuide.setData(makeConstantLineData(indicators, 20));
-          nextPaneIndex += 1;
-          break;
-        }
-        case 'adx': {
-          const adxSeries = chart.addSeries(
-            LineSeries,
-            {
-              color: '#0f172a',
-              lineWidth: 2,
-              crosshairMarkerVisible: false,
-              lastValueVisible: false,
-              priceLineVisible: false,
-            },
-            nextPaneIndex
-          );
-          adxSeries.setData(makeLineData(indicators, (row) => row.adx_14));
-
-          const plusDiSeries = chart.addSeries(
-            LineSeries,
-            {
-              color: '#10b981',
-              lineWidth: 1,
-              crosshairMarkerVisible: false,
-              lastValueVisible: false,
-              priceLineVisible: false,
-            },
-            nextPaneIndex
-          );
-          plusDiSeries.setData(makeLineData(indicators, (row) => row.plus_di));
-
-          const minusDiSeries = chart.addSeries(
-            LineSeries,
-            {
-              color: '#f43f5e',
-              lineWidth: 1,
-              crosshairMarkerVisible: false,
-              lastValueVisible: false,
-              priceLineVisible: false,
-            },
-            nextPaneIndex
-          );
-          minusDiSeries.setData(makeLineData(indicators, (row) => row.minus_di));
-
-          const guide = chart.addSeries(
-            LineSeries,
-            {
-              color: '#cbd5e1',
-              lineWidth: 1,
-              lineStyle: LineStyle.Dashed,
-              crosshairMarkerVisible: false,
-              lastValueVisible: false,
-              priceLineVisible: false,
-            },
-            nextPaneIndex
-          );
-          guide.setData(makeConstantLineData(indicators, 25));
-          nextPaneIndex += 1;
-          break;
-        }
-        case 'obv': {
-          const obvSeries = chart.addSeries(
-            LineSeries,
-            {
-              color: '#f59e0b',
-              lineWidth: 2,
-              crosshairMarkerVisible: false,
-              lastValueVisible: false,
-              priceLineVisible: false,
-              priceFormat: { type: 'volume' },
-            },
-            nextPaneIndex
-          );
-          obvSeries.setData(makeLineData(indicators, (row) => row.obv));
-          nextPaneIndex += 1;
-          break;
-        }
-        default:
-          break;
-      }
-    }
-
-    chart.priceScale('right', 0).applyOptions({
-      scaleMargins: { top: 0.08, bottom: 0.08 },
+    chartRef.current.createOverlay({
+      name: pendingOverlayId,
+      groupId: DRAWING_GROUP_ID,
     });
+    appliedOverlayNonceRef.current = createOverlayNonce;
+  }, [chartReady, createOverlayNonce, pendingOverlayId]);
 
-    const panes = chart.panes();
-    if (panes[0]) {
-      panes[0].setStretchFactor(visiblePanelCount > 0 ? 4 : 1);
+  useEffect(() => {
+    if (!chartReady || !chartRef.current || clearDrawingsNonce === 0 || clearDrawingsNonce === clearedOverlayNonceRef.current) {
+      return;
     }
 
-    for (let paneIndex = 1; paneIndex < panes.length; paneIndex += 1) {
-      panes[paneIndex]?.setStretchFactor(1);
-    }
+    chartRef.current.removeOverlay({ groupId: DRAWING_GROUP_ID });
+    clearedOverlayNonceRef.current = clearDrawingsNonce;
+  }, [chartReady, clearDrawingsNonce]);
 
-    chart.timeScale().fitContent();
-
-    return () => {
-      chart.remove();
-    };
-  }, [
-    clearDrawingsNonce,
-    drawingTool,
-    drawings,
-    highlightedRange,
-    indicators,
-    pendingDrawingPoints,
-    priceBars,
-    requiredPoints,
-    settings.chartStyle,
-    settings.indicators,
-    settings.showVolume,
-    visiblePanelCount,
-  ]);
-
-  if (priceBars.length === 0) {
+  if (!isLoading && priceBars.length === 0) {
     return (
-      <div className="flex h-105 items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50 text-sm text-gray-500">
-        {isLoading ? 'Loading chart data...' : emptyMessage}
+      <div className="flex h-[460px] items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50 text-sm text-gray-500">
+        {emptyMessage}
       </div>
     );
   }
 
-  return <div ref={chartContainerRef} className="w-full rounded-xl border border-gray-100" style={{ height: `${chartHeight}px` }} />;
+  return (
+    <div className="relative overflow-hidden rounded-2xl border border-gray-100 bg-white">
+      <div ref={chartContainerRef} style={{ height: chartHeight, width: '100%' }} />
+      {isLoading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-white/70 text-sm font-medium text-gray-500 backdrop-blur-sm">
+          Loading chart...
+        </div>
+      )}
+    </div>
+  );
 }

@@ -1,6 +1,5 @@
 import type { HistoricDataRow, IndicatorRow } from '@/api/market';
 import type { ChartRange, PriceBar } from './chart-config';
-import type { LineData, Time } from 'lightweight-charts';
 
 export function toDateKey(date?: string | null): string | null {
   if (!date) return null;
@@ -26,19 +25,21 @@ export function buildPriceBars(rows: HistoricDataRow[]): PriceBar[] {
   for (const row of sortedRows) {
     const date = toDateKey(row.date);
     const close = row.close ?? row.ltp;
+    const timestamp = date ? Date.parse(`${date}T00:00:00Z`) : Number.NaN;
 
-    if (!date || row.open == null || row.high == null || row.low == null || close == null) {
+    if (!date || Number.isNaN(timestamp) || row.open == null || row.high == null || row.low == null || close == null) {
       continue;
     }
 
     uniqueRows.set(date, {
       date,
-      time: date,
+      timestamp,
       open: row.open,
       high: row.high,
       low: row.low,
       close,
       volume: row.vol ?? 0,
+      turnover: row.turnover ?? undefined,
     });
   }
 
@@ -95,29 +96,6 @@ export function filterByRange<T extends { date: string }>(rows: T[], range: Char
   return rows.filter((row) => {
     const rowDate = new Date(row.date);
     return !Number.isNaN(rowDate.getTime()) && rowDate >= cutoff;
-  });
-}
-
-export function makeLineData(rows: IndicatorRow[], selector: (row: IndicatorRow) => number | null | undefined): LineData<Time>[] {
-  return rows.flatMap((row) => {
-    const date = row.date ?? '';
-    const value = selector(row);
-
-    if (!date || value == null || !Number.isFinite(value)) {
-      return [];
-    }
-
-    return [{ time: date, value }];
-  });
-}
-
-export function makeConstantLineData(rows: IndicatorRow[], value: number): LineData<Time>[] {
-  return rows.flatMap((row) => {
-    if (!row.date) {
-      return [];
-    }
-
-    return [{ time: row.date, value }];
   });
 }
 

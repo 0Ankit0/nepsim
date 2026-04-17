@@ -8,19 +8,20 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useStock360View } from '@/hooks/useMarketAnalysis';
 import { useSimulation } from '@/hooks/useSimulator';
-import type { IndicatorRow } from '@/api/market';
 import type { IndicatorSignal, SimilarPeriod, PricePoint } from '@/api/marketAnalysis';
 import { MarketChartCanvas } from '@/components/market-chart/chart-canvas';
 import { MarketChartToolsPanel } from '@/components/market-chart/tools-panel';
 import {
   DEFAULT_LAYOUT_SETTINGS,
   INDICATOR_CATALOG,
+  OVERLAY_CATALOG,
   getIndicatorMeta,
   upsertIndicator,
   type ChartLayoutSettings,
   type ChartRange,
   type IndicatorId,
   type IndicatorPreset,
+  type OverlayId,
   type PriceBar,
 } from '@/components/market-chart/chart-config';
 import { toDateKey } from '@/components/market-chart/data-utils';
@@ -68,19 +69,21 @@ function buildPriceHistoryBars(history: PricePoint[]): PriceBar[] {
   for (const row of sortedRows) {
     const date = toDateKey(row.date);
     const close = row.close ?? row.ltp;
+    const timestamp = date ? Date.parse(`${date}T00:00:00Z`) : Number.NaN;
 
-    if (!date || row.open == null || row.high == null || row.low == null || close == null) {
+    if (!date || Number.isNaN(timestamp) || row.open == null || row.high == null || row.low == null || close == null) {
       continue;
     }
 
     uniqueRows.set(date, {
       date,
-      time: date,
+      timestamp,
       open: row.open,
       high: row.high,
       low: row.low,
       close,
       volume: row.vol ?? 0,
+      turnover: row.turnover,
     });
   }
 
@@ -92,7 +95,16 @@ function filterPriceHistoryByRange<T extends { date: string }>(rows: T[], range:
     return rows;
   }
 
-  const daysBackMap: Record<Exclude<ChartRange, '1D' | '2D' | '1W' | 'ALL'>, number> = {
+  if (range === '1D') {
+    return rows.slice(-1);
+  }
+
+  if (range === '2D') {
+    return rows.slice(-2);
+  }
+
+  const daysBackMap: Record<Exclude<ChartRange, '1D' | '2D' | 'ALL'>, number> = {
+    '1W': 7,
     '1M': 30,
     '3M': 90,
     '6M': 180,
@@ -118,140 +130,23 @@ function filterPriceHistoryByRange<T extends { date: string }>(rows: T[], range:
   });
 }
 
-function buildComputedIndicators(priceBars: PriceBar[]): IndicatorRow[] {
-  const closes = priceBars.map((bar) => bar.close);
-  const highs = priceBars.map((bar) => bar.high);
-  const lows = priceBars.map((bar) => bar.low);
-  const volumes = priceBars.map((bar) => bar.volume);
-  const rows: IndicatorRow[] = [];
-  let ema12: number | null = null;
-  let ema26: number | null = null;
-  let avgGain: number | null = null;
-  let avgLoss: number | null = null;
-  let obv = 0;
-  const macdValues: Array<number | null> = [];
-
-  for (let index = 0; index < priceBars.length; index += 1) {
-    const date = priceBars[index]?.date;
-    const close = closes[index] ?? null;
-    if (!date || close == null) continue;
-
-    const periodSlice = (length: number) => closes.slice(Math.max(0, index - length + 1), index + 1);
-    const sma = (length: number) => {
-      const slice = periodSlice(length);
-      if (slice.length < length) return null;
-      return slice.reduce((sum, value) => sum + value, 0) / length;
-    };
-    const stdDev = (length: number) => {
-      const mean = sma(length);
-      if (mean == null) return null;
-      const slice = periodSlice(length);
-      const variance = slice.reduce((sum, value) => sum + (value - mean) ** 2, 0) / slice.length;
-      return Math.sqrt(variance);
-    };
-
-    const alpha12 = 2 / (12 + 1);
-    const alpha26 = 2 / (26 + 1);
-    ema12 = ema12 == null ? close : close * alpha12 + ema12 * (1 - alpha12);
-    ema26 = ema26 == null ? close : close * alpha26 + ema26 * (1 - alpha26);
-
-    const prevClose = index > 0 ? closes[index - 1] : close;
-    const change = close - prevClose;
-    const gain = Math.max(change, 0);
-    const loss = Math.max(-change, 0);
-
-    if (index === 14) {
-      const gains = closes.slice(1, 15).map((value, i) => Math.max(value - closes[i]!, 0));
-      const losses = closes.slice(1, 15).map((value, i) => Math.max(closes[i]! - value, 0));
-      avgGain = gains.reduce((sum, value) => sum + value, 0) / 14;
-      avgLoss = losses.reduce((sum, value) => sum + value, 0) / 14;
-    } else if (index > 14 && avgGain != null && avgLoss != null) {
-      avgGain = (avgGain * 13 + gain) / 14;
-      avgLoss = (avgLoss * 13 + loss) / 14;
-    }
-
-    const rsi14 =
-      avgGain == null || avgLoss == null ? null : avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
-
-    const macdLine = ema12 != null && ema26 != null ? ema12 - ema26 : null;
-    macdValues.push(macdLine);
-    const macdWindow = macdValues.filter((value): value is number => value != null).slice(-9);
-    const macdSignal = macdWindow.length < 9 ? null : macdWindow.reduce((sum, value) => sum + value, 0) / macdWindow.length;
-    const macdHist = macdLine != null && macdSignal != null ? macdLine - macdSignal : null;
-
-    const stochWindowHigh = Math.max(...highs.slice(Math.max(0, index - 13), index + 1));
-    const stochWindowLow = Math.min(...lows.slice(Math.max(0, index - 13), index + 1));
-    const stochK = index < 13 || stochWindowHigh === stochWindowLow ? null : ((close - stochWindowLow) / (stochWindowHigh - stochWindowLow)) * 100;
-    const recentK = [...rows.map((row) => row.stoch_k).slice(-2), stochK].filter((value): value is number => value != null);
-    const stochD = recentK.length < 3 ? null : recentK.reduce((sum, value) => sum + value, 0) / recentK.length;
-
-    if (index > 0) {
-      obv += close >= prevClose ? volumes[index] ?? 0 : -(volumes[index] ?? 0);
-    }
-
-    const sma20 = sma(20);
-    const sma50 = sma(50);
-    const bbStdDev = stdDev(20);
-
-    rows.push({
-      date,
-      rsi_14: rsi14,
-      macd_line: macdLine,
-      macd_signal: macdSignal,
-      macd_hist: macdHist,
-      stoch_k: stochK,
-      stoch_d: stochD,
-      cci_20: null,
-      williams_r: null,
-      momentum_5: index >= 5 ? close - closes[index - 5]! : null,
-      sma_5: sma(5),
-      sma_10: sma(10),
-      sma_20: sma20,
-      sma_50: sma50,
-      sma_200: sma(200),
-      ema_9: null,
-      ema_12: ema12,
-      ema_26: ema26,
-      ema_200: null,
-      adx_14: null,
-      plus_di: null,
-      minus_di: null,
-      slope_20: null,
-      acceleration: null,
-      atr_14: null,
-      bb_upper: sma20 != null && bbStdDev != null ? sma20 + bbStdDev * 2 : null,
-      bb_lower: sma20 != null && bbStdDev != null ? sma20 - bbStdDev * 2 : null,
-      ichimoku_conversion: null,
-      ichimoku_base: null,
-      ichimoku_span_a: null,
-      ichimoku_span_b: null,
-      chandelier_long: null,
-      chandelier_short: null,
-      obv,
-      mfi_14: null,
-      kvo: null,
-    });
-  }
-
-  return rows;
-}
-
 function PriceChart({
+  symbol,
   history,
   selectedPeriod,
 }: {
+  symbol: string;
   history: PricePoint[];
   selectedPeriod: SimilarPeriod | null;
 }) {
   const [chartSettings, setChartSettings] = useState<ChartLayoutSettings>(() => ({ ...DEFAULT_LAYOUT_SETTINGS, range: '1Y' }));
   const [pendingIndicatorId, setPendingIndicatorId] = useState<IndicatorId | ''>('');
-  const [drawingTool, setDrawingTool] = useState<'none' | 'trendline' | 'fib' | 'xabcd' | 'long'>('none');
+  const [pendingOverlayId, setPendingOverlayId] = useState<OverlayId | ''>(OVERLAY_CATALOG[0]?.id ?? '');
+  const [createOverlayNonce, setCreateOverlayNonce] = useState(0);
   const [clearDrawingsNonce, setClearDrawingsNonce] = useState(0);
 
   const priceBars = useMemo(() => buildPriceHistoryBars(history), [history]);
-  const indicatorRows = useMemo(() => buildComputedIndicators(priceBars), [priceBars]);
   const filteredPriceBars = useMemo(() => filterPriceHistoryByRange(priceBars, chartSettings.range), [priceBars, chartSettings.range]);
-  const filteredIndicators = useMemo(() => filterPriceHistoryByRange(indicatorRows, chartSettings.range), [indicatorRows, chartSettings.range]);
   const availableIndicators = useMemo(
     () => INDICATOR_CATALOG.filter((candidate) => !chartSettings.indicators.some((indicator) => indicator.id === candidate.id)),
     [chartSettings.indicators]
@@ -272,14 +167,29 @@ function PriceChart({
     if (preset === 'trend') {
       setChartSettings((current) => ({
         ...current,
-        indicators: [{ id: 'sma20', visible: true }, { id: 'sma50', visible: true }, { id: 'ema12', visible: true }, { id: 'bollinger', visible: true }],
+        indicators: [
+          { id: 'MA', visible: true },
+          { id: 'EMA', visible: true },
+          { id: 'SMA', visible: true },
+          { id: 'BBI', visible: true },
+          { id: 'BOLL', visible: true },
+          { id: 'SAR', visible: true },
+          { id: 'DMI', visible: true },
+        ],
       }));
       return;
     }
     if (preset === 'momentum') {
       setChartSettings((current) => ({
         ...current,
-        indicators: [{ id: 'rsi14', visible: true }, { id: 'macd', visible: true }, { id: 'stochastic', visible: true }, { id: 'obv', visible: true }],
+        indicators: [
+          { id: 'RSI', visible: true },
+          { id: 'MACD', visible: true },
+          { id: 'KDJ', visible: true },
+          { id: 'ROC', visible: true },
+          { id: 'MTM', visible: true },
+          { id: 'AO', visible: true },
+        ],
       }));
       return;
     }
@@ -290,36 +200,18 @@ function PriceChart({
     <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
       <div className="xl:col-span-2">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-col gap-2">
-            <div className="flex flex-wrap gap-2">
-              {(['candlestick', 'line'] as const).map((mode) => (
-                <Button
-                  key={mode}
-                  type="button"
-                  size="sm"
-                  variant={chartSettings.chartStyle === mode ? 'primary' : 'outline'}
-                  onClick={() => setChartSettings((current) => ({ ...current, chartStyle: mode }))}
-                >
-                  {mode === 'candlestick' ? 'Candles' : 'Line'}
-                </Button>
-              ))}
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <select
-                value={drawingTool}
-                onChange={(event) => setDrawingTool(event.target.value as 'none' | 'trendline' | 'fib' | 'xabcd' | 'long')}
-                className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs text-gray-700 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          <div className="flex flex-wrap gap-2">
+            {(['candlestick', 'hollow', 'ohlc', 'area'] as const).map((mode) => (
+              <Button
+                key={mode}
+                type="button"
+                size="sm"
+                variant={chartSettings.chartStyle === mode ? 'primary' : 'outline'}
+                onClick={() => setChartSettings((current) => ({ ...current, chartStyle: mode }))}
               >
-                <option value="none">Drawing: None</option>
-                <option value="trendline">Trend line (2 clicks)</option>
-                <option value="fib">Fibonacci retracement (2 clicks)</option>
-                <option value="xabcd">XABCD pattern (5 clicks)</option>
-                <option value="long">Long position (2 clicks)</option>
-              </select>
-              <Button type="button" size="sm" variant="outline" onClick={() => setClearDrawingsNonce((current) => current + 1)}>
-                Clear drawings
+                {mode === 'candlestick' ? 'Candles' : mode === 'hollow' ? 'Hollow' : mode === 'ohlc' ? 'OHLC' : 'Area'}
               </Button>
-            </div>
+            ))}
           </div>
           <div className="flex flex-wrap gap-2">
             {PRICE_HISTORY_RANGES.map((nextRange) => (
@@ -336,8 +228,8 @@ function PriceChart({
           </div>
         </div>
         <MarketChartCanvas
+          symbol={symbol}
           priceBars={filteredPriceBars}
-          indicators={filteredIndicators}
           highlightedRange={
             selectedPeriod
               ? {
@@ -346,7 +238,8 @@ function PriceChart({
                 }
               : null
           }
-          drawingTool={drawingTool}
+          pendingOverlayId={pendingOverlayId}
+          createOverlayNonce={createOverlayNonce}
           clearDrawingsNonce={clearDrawingsNonce}
           settings={chartSettings}
           emptyMessage="No price history is available for this symbol yet."
@@ -379,6 +272,14 @@ function PriceChart({
           }));
         }}
         onToggleVolume={() => setChartSettings((current) => ({ ...current, showVolume: !current.showVolume }))}
+        availableOverlays={OVERLAY_CATALOG}
+        pendingOverlayId={pendingOverlayId}
+        onPendingOverlayChange={setPendingOverlayId}
+        onAddOverlay={() => {
+          if (!pendingOverlayId) return;
+          setCreateOverlayNonce((current) => current + 1);
+        }}
+        onClearOverlays={() => setClearDrawingsNonce((current) => current + 1)}
       />
     </div>
   );
@@ -640,7 +541,24 @@ export default function Stock360Page() {
           <Card>
             <CardContent className="p-5">
               <h3 className="text-sm font-semibold text-gray-700 mb-4">Price History</h3>
-              <PriceChart history={data.price_history} selectedPeriod={selectedSimilarPeriod} />
+               <PriceChart symbol={data.symbol} history={data.price_history} selectedPeriod={selectedSimilarPeriod} />
+             </CardContent>
+           </Card>
+
+          <Card className="border-indigo-100 bg-gradient-to-br from-indigo-50 via-white to-sky-50">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-700">Gemini Technical Read</h3>
+                  <p className="text-xs text-gray-500 mt-1">Backend-generated commentary from the computed technical snapshot.</p>
+                </div>
+                <span className="rounded-full border border-indigo-200 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-indigo-600">
+                  Gemini
+                </span>
+              </div>
+              <p className="mt-4 text-sm leading-7 text-gray-700">
+                {data.ai_summary ?? 'Gemini commentary is unavailable right now, but the computed technical breakdown below is still current.'}
+              </p>
             </CardContent>
           </Card>
 

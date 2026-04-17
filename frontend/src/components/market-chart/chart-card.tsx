@@ -2,15 +2,15 @@
 
 import { Search } from 'lucide-react';
 import { useEffect, useRef } from 'react';
-import type { IndicatorRow } from '@/api/market';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import type { ChartLayoutSettings, ChartStyle, PriceBar } from './chart-config';
+import type { ChartLayoutSettings, ChartStyle, OverlayId, PriceBar } from './chart-config';
 import { RANGE_OPTIONS } from './chart-config';
 import { MarketChartCanvas } from './chart-canvas';
 
 interface MarketChartCardProps {
+  symbol: string;
   symbolSearch: string;
   onSymbolSearchChange: (value: string) => void;
   onOpenSymbol: (candidate?: string) => void;
@@ -22,8 +22,10 @@ interface MarketChartCardProps {
   chartSettings: ChartLayoutSettings;
   onChartStyleChange: (style: ChartStyle) => void;
   onRangeChange: (range: ChartLayoutSettings['range']) => void;
+  pendingOverlayId?: OverlayId | '';
+  createOverlayNonce?: number;
+  clearDrawingsNonce?: number;
   priceBars: PriceBar[];
-  indicators: IndicatorRow[];
   isHistoryLoading: boolean;
   isIndicatorHistoryLoading: boolean;
 }
@@ -42,6 +44,7 @@ function useClickOutside(ref: React.RefObject<HTMLElement | null>, onOutsideClic
 }
 
 export function MarketChartCard({
+  symbol,
   symbolSearch,
   onSymbolSearchChange,
   onOpenSymbol,
@@ -53,8 +56,10 @@ export function MarketChartCard({
   chartSettings,
   onChartStyleChange,
   onRangeChange,
+  pendingOverlayId = '',
+  createOverlayNonce = 0,
+  clearDrawingsNonce = 0,
   priceBars,
-  indicators,
   isHistoryLoading,
   isIndicatorHistoryLoading,
 }: MarketChartCardProps) {
@@ -73,16 +78,16 @@ export function MarketChartCard({
       <CardHeader className="border-b border-gray-100 bg-gray-50/50 py-4 space-y-4">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div>
-            <CardTitle className="text-sm font-semibold text-gray-600">Interactive OHLCV Chart</CardTitle>
+            <CardTitle className="text-sm font-semibold text-gray-600">KLineChart Workspace</CardTitle>
             <p className="mt-1 text-xs text-gray-500">
               {isHistoryLoading || isIndicatorHistoryLoading
-                ? 'Loading price and indicator history...'
-                : `${priceBars.length} bars in view · daily market data`}
+                ? 'Loading price history and chart panes...'
+                : `${priceBars.length} bars in view · native KLineChart indicators and drawings`}
             </p>
           </div>
 
           <div className="flex flex-wrap gap-2">
-            {(['candlestick', 'line'] as ChartStyle[]).map((mode) => (
+            {(['candlestick', 'hollow', 'ohlc', 'area'] as ChartStyle[]).map((mode) => (
               <Button
                 key={mode}
                 type="button"
@@ -90,7 +95,7 @@ export function MarketChartCard({
                 variant={chartSettings.chartStyle === mode ? 'primary' : 'outline'}
                 onClick={() => onChartStyleChange(mode)}
               >
-                {mode === 'candlestick' ? 'Candles' : 'Line'}
+                {mode === 'candlestick' ? 'Candles' : mode === 'hollow' ? 'Hollow' : mode === 'ohlc' ? 'OHLC' : 'Area'}
               </Button>
             ))}
           </div>
@@ -171,9 +176,12 @@ export function MarketChartCard({
 
       <CardContent className="p-4">
         <MarketChartCanvas
+          symbol={symbol}
           priceBars={priceBars}
-          indicators={indicators}
           settings={chartSettings}
+          pendingOverlayId={pendingOverlayId}
+          createOverlayNonce={createOverlayNonce}
+          clearDrawingsNonce={clearDrawingsNonce}
           isLoading={isHistoryLoading || isIndicatorHistoryLoading}
         />
       </CardContent>
