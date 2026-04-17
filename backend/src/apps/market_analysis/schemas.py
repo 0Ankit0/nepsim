@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Optional
 
 from pydantic import BaseModel
+from src.apps.market.supabase_schemas import IndicatorRow
 
 
 class AnalysisResultSchema(BaseModel):
@@ -130,6 +131,7 @@ class Stock360Schema(BaseModel):
 
     # Extended 360 data
     indicator_signals: list[IndicatorSignalSchema]
+    indicator_history: list[IndicatorRow]
     performance: PerformanceMetricsSchema
     trend_analysis: TrendAnalysisSchema
     similar_periods: list[SimilarPeriodSchema]

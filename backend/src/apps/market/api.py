@@ -327,7 +327,7 @@ async def get_nepse_quote(
 @router.get(
     "/nepse/{symbol}/indicators",
     response_model=IndicatorsResponse,
-    summary="Pre-computed technical indicators from Supabase",
+    summary="Computed technical indicators with TA-Lib defaults",
 )
 async def get_nepse_indicators(
     symbol: str,
@@ -336,9 +336,12 @@ async def get_nepse_indicators(
     limit: int = Query(500, ge=1, le=5000),
     _: User = Depends(get_current_user),
 ):
-    """All 37 pre-computed indicators (RSI, MACD, Bollinger, Ichimoku, etc.) for a symbol."""
-    rows = await SupabaseMarketService.get_indicators(
-        symbol.upper(), start_date, end_date, limit
+    """Computed indicator history (TradingView-style defaults) for a symbol."""
+    rows = await MarketService.get_indicator_history(
+        symbol.upper(),
+        start_date=start_date,
+        end_date=end_date,
+        limit=limit,
     )
     return IndicatorsResponse(symbol=symbol.upper(), count=len(rows), data=rows)
 
@@ -346,18 +349,18 @@ async def get_nepse_indicators(
 @router.get(
     "/nepse/{symbol}/indicators/latest",
     response_model=IndicatorRow,
-    summary="Latest indicator snapshot for a NEPSE symbol",
+    summary="Latest computed indicator snapshot for a NEPSE symbol",
 )
 async def get_nepse_latest_indicators(
     symbol: str,
     _: User = Depends(get_current_user),
 ):
-    """Most recent pre-computed indicator values for quick screening."""
-    row = await SupabaseMarketService.get_latest_indicators(symbol.upper())
+    """Most recent TA-Lib indicator snapshot for quick screening and chart overlays."""
+    row = await MarketService.get_latest_indicator_snapshot(symbol.upper())
     if not row:
         raise HTTPException(
             status_code=404,
-            detail=f"No indicator data found for '{symbol.upper()}' in Supabase.",
+            detail=f"No indicator data found for '{symbol.upper()}'.",
         )
     return row
 
@@ -391,4 +394,3 @@ async def get_nepse_latest_indices(
     """Most recent row per distinct index — useful for dashboard summary cards."""
     rows = await SupabaseMarketService.get_latest_indices(index_name)
     return LatestIndicesResponse(data=rows)
-

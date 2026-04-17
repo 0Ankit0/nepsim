@@ -1,8 +1,8 @@
 """
 Market Analysis App — Core analysis engine.
 
-Computes a multi-factor stock signal (STRONG_BUY → STRONG_SELL)
-from pre-computed technical indicators and the latest quote.
+Builds detailed stock analysis from OHLCV history using computed technical
+indicators and optional Gemini commentary.
 """
 from __future__ import annotations
 
@@ -13,12 +13,31 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Optional
 
-from src.apps.market.supabase_service import SupabaseMarketService
+from src.apps.core.config import settings
 from src.apps.market.supabase_schemas import HistoricDataRow, IndicatorRow
+from src.apps.market.supabase_service import SupabaseMarketService
+from src.apps.market.technical_analysis import compute_indicator_history
+
+from .schemas import (
+    IndicatorSignalSchema,
+    PerformanceMetricsSchema,
+    PricePoint,
+    SimilarPeriodSchema,
+    Stock360Schema,
+    TrendAnalysisSchema,
+)
 
 logger = logging.getLogger(__name__)
 
-_SEMAPHORE_LIMIT = 20
+_SEMAPHORE_LIMIT = 12
+_ANALYSIS_HISTORY_LIMIT = 400
+_STOCK_360_HISTORY_LIMIT = 2000
+
+_AI_SYSTEM_PROMPT = """You are an expert NEPSE technical analyst.
+Use only the supplied market data and indicators. Be balanced and specific.
+State what supports the current bias, what weakens it, and the main risk.
+Do not guarantee outcomes or give absolute advice. Keep the response concise,
+educational, and grounded in the supplied technical data."""
 
 
 @dataclass
@@ -43,255 +62,262 @@ def _clamp(value: float, lo: float = 0.0, hi: float = 100.0) -> float:
     return max(lo, min(hi, value))
 
 
+def _price(row: HistoricDataRow) -> float:
+    return row.ltp or row.close or 0.0
+
+
+def _latest(history: list[HistoricDataRow]) -> Optional[HistoricDataRow]:
+    return history[-1] if history else None
+
+
+async def _load_symbol_history(
+    symbol: str,
+    as_of_date: Optional[str],
+    limit: int,
+) -> list[HistoricDataRow]:
+    return await SupabaseMarketService.get_historic_data(
+        symbol.upper(),
+        end_date=as_of_date,
+        limit=limit,
+    )
+
+
+async def _load_analysis_inputs(
+    symbol: str,
+    as_of_date: Optional[str],
+    limit: int,
+) -> tuple[Optional[HistoricDataRow], list[HistoricDataRow], list[IndicatorRow], Optional[IndicatorRow]]:
+    history = await _load_symbol_history(symbol, as_of_date=as_of_date, limit=limit)
+    latest_quote = _latest(history)
+    indicator_history = compute_indicator_history(history)
+    latest_indicator = indicator_history[-1] if indicator_history else None
+    return latest_quote, history, indicator_history, latest_indicator
+
+
 def analyze_stock(
     symbol: str,
     indicator_dict: IndicatorRow,
     quote_dict: HistoricDataRow,
 ) -> AnalysisResult:
-    """
-    Run multi-factor scoring on a stock.
-    All category scores start at 50, are adjusted by signal rules, then clamped 0–100.
-    Final score is a weighted average of oscillator, trend, volume, volatility.
-    """
+    """Run multi-factor scoring on a stock using computed indicator data."""
     ind = indicator_dict
     quote = quote_dict
-
-    ltp = quote.ltp or quote.close or 0.0
+    ltp = _price(quote)
+    diff_pct = quote.diff_pct or 0.0
     key_signals: list[str] = []
 
-    # ── Oscillator Score (weight 0.35) ────────────────────────────────────────
+    def add_signal(message: str) -> None:
+        if message not in key_signals:
+            key_signals.append(message)
+
     osc = 50.0
+    if ind.rsi_14 is not None:
+        if ind.rsi_14 < 30:
+            osc += 18
+            add_signal(f"RSI {ind.rsi_14:.1f} is oversold")
+        elif ind.rsi_14 < 40:
+            osc += 8
+        elif ind.rsi_14 > 70:
+            osc -= 18
+            add_signal(f"RSI {ind.rsi_14:.1f} is overbought")
+        elif ind.rsi_14 > 60:
+            osc -= 8
 
-    rsi = ind.rsi_14
-    if rsi is not None:
-        if rsi < 25:
-            osc += 25
-            key_signals.append("Strongly oversold")
-        elif rsi < 35:
-            osc += 15
-            key_signals.append("Oversold buy")
-        elif rsi < 45:
-            osc += 5
-        elif rsi > 75:
-            osc -= 25
-            key_signals.append("Strongly overbought")
-        elif rsi > 65:
-            osc -= 15
-            key_signals.append("Overbought sell")
-        elif rsi > 55:
-            osc -= 5
-
-    k, d = ind.stoch_k, ind.stoch_d
-    if k is not None and d is not None:
-        if k < 20 and d < 20:
-            osc += 15
-            key_signals.append("Stoch oversold")
-        elif k > 80 and d > 80:
-            osc -= 15
-            key_signals.append("Stoch overbought")
-        elif k > d and k < 50:
-            osc += 5
-            key_signals.append("Bullish crossover below midline")
-        elif k < d and k > 50:
-            osc -= 5
-            key_signals.append("Bearish crossover above midline")
-
-    cci = ind.cci_20
-    if cci is not None:
-        if cci < -150:
-            osc += 15
-        elif cci < -100:
+    if ind.stoch_k is not None and ind.stoch_d is not None:
+        if ind.stoch_k < 20 and ind.stoch_d < 20:
             osc += 10
-        elif cci > 150:
-            osc -= 15
-        elif cci > 100:
+            add_signal("Stochastic is in an oversold zone")
+        elif ind.stoch_k > 80 and ind.stoch_d > 80:
             osc -= 10
+            add_signal("Stochastic is in an overbought zone")
+        if ind.stoch_k > ind.stoch_d and ind.stoch_k < 50:
+            osc += 7
+            add_signal("Stochastic bullish crossover")
+        elif ind.stoch_k < ind.stoch_d and ind.stoch_k > 50:
+            osc -= 7
+            add_signal("Stochastic bearish crossover")
 
-    wr = ind.williams_r
-    if wr is not None:
-        if wr < -80:
-            osc += 10
-            key_signals.append("Oversold")
-        elif wr > -20:
-            osc -= 10
-            key_signals.append("Overbought")
+    if ind.cci_20 is not None:
+        if ind.cci_20 < -100:
+            osc += 8
+            add_signal("CCI is deeply negative")
+        elif ind.cci_20 > 100:
+            osc -= 8
+            add_signal("CCI is stretched higher")
 
-    mfi = ind.mfi_14
-    if mfi is not None:
-        if mfi < 20:
-            osc += 10
-            key_signals.append("Oversold w/ volume")
-        elif mfi > 80:
-            osc -= 10
-            key_signals.append("Overbought w/ volume")
+    if ind.williams_r is not None:
+        if ind.williams_r < -80:
+            osc += 6
+        elif ind.williams_r > -20:
+            osc -= 6
+
+    if ind.mfi_14 is not None:
+        if ind.mfi_14 < 20:
+            osc += 7
+            add_signal("Money flow is oversold")
+        elif ind.mfi_14 > 80:
+            osc -= 7
+            add_signal("Money flow is overbought")
+
+    if ind.roc_10 is not None:
+        if ind.roc_10 > 5:
+            osc += 4
+        elif ind.roc_10 < -5:
+            osc -= 4
 
     osc = _clamp(osc)
 
-    # ── Trend Score (weight 0.35) ─────────────────────────────────────────────
     trend = 50.0
+    if ind.macd_line is not None and ind.macd_signal is not None and ind.macd_hist is not None:
+        if ind.macd_line > ind.macd_signal and ind.macd_hist > 0:
+            trend += 16
+            add_signal("MACD is above signal with positive histogram")
+        elif ind.macd_line < ind.macd_signal and ind.macd_hist < 0:
+            trend -= 16
+            add_signal("MACD is below signal with negative histogram")
+        elif ind.macd_hist > 0:
+            trend += 6
+        elif ind.macd_hist < 0:
+            trend -= 6
 
-    macd_hist = ind.macd_hist
-    macd_line = ind.macd_line
-    macd_signal_val = ind.macd_signal
-    if macd_hist is not None and macd_line is not None and macd_signal_val is not None:
-        if macd_hist > 0 and macd_line > macd_signal_val:
-            trend += 20
-            key_signals.append("MACD bullish")
-        elif macd_hist < 0 and macd_line < macd_signal_val:
-            trend -= 20
-            key_signals.append("MACD bearish")
-        elif macd_hist > 0:
-            trend += 5
-        elif macd_hist < 0:
-            trend -= 5
+    if ind.adx_14 is not None and ind.plus_di is not None and ind.minus_di is not None:
+        if ind.adx_14 > 25 and ind.plus_di > ind.minus_di:
+            trend += 14
+            add_signal("ADX confirms bullish trend strength")
+        elif ind.adx_14 > 25 and ind.minus_di > ind.plus_di:
+            trend -= 14
+            add_signal("ADX confirms bearish trend strength")
+        elif ind.adx_14 < 18:
+            add_signal("Trend strength is weak")
 
-    adx = ind.adx_14
-    plus_di = ind.plus_di
-    minus_di = ind.minus_di
-    if adx is not None and plus_di is not None and minus_di is not None:
-        if adx < 20:
-            key_signals.append("Ranging market")
-        elif adx > 30 and plus_di > minus_di:
-            trend += 20
-            key_signals.append("Strong bullish trend")
-        elif adx > 25 and plus_di > minus_di:
-            trend += 12
-        elif adx > 30 and minus_di > plus_di:
-            trend -= 20
-            key_signals.append("Strong bearish trend")
-        elif adx > 25 and minus_di > plus_di:
-            trend -= 12
+    if all(value is not None for value in (ind.ema_20, ind.ema_50, ind.sma_200)) and ltp:
+        if ltp > ind.ema_20 > ind.ema_50 > ind.sma_200:  # type: ignore[operator]
+            trend += 18
+            add_signal("Price is stacked above key moving averages")
+        elif ltp < ind.ema_20 < ind.ema_50 < ind.sma_200:  # type: ignore[operator]
+            trend -= 18
+            add_signal("Price is stacked below key moving averages")
 
-    sma_50 = ind.sma_50
-    sma_200 = ind.sma_200
-    if sma_50 is not None and sma_200 is not None:
-        if sma_50 > sma_200:
-            trend += 15
-            key_signals.append("Golden cross")
-        else:
-            trend -= 15
-            key_signals.append("Death cross")
-    if sma_50 is not None and ltp:
-        if ltp > sma_50:
+    if ind.sma_50 is not None and ind.sma_200 is not None:
+        if ind.sma_50 > ind.sma_200:
             trend += 8
-            key_signals.append("Above SMA50")
+            add_signal("SMA 50 is above SMA 200")
         else:
             trend -= 8
-            key_signals.append("Below SMA50")
+            add_signal("SMA 50 is below SMA 200")
 
-    span_a = ind.ichimoku_span_a
-    span_b = ind.ichimoku_span_b
-    if span_a is not None and span_b is not None and ltp:
-        cloud_top = max(span_a, span_b)
-        cloud_bot = min(span_a, span_b)
+    if ind.supertrend_direction == "BULLISH":
+        trend += 10
+        add_signal("Supertrend remains bullish")
+    elif ind.supertrend_direction == "BEARISH":
+        trend -= 10
+        add_signal("Supertrend remains bearish")
+
+    if ind.ichimoku_span_a is not None and ind.ichimoku_span_b is not None and ltp:
+        cloud_top = max(ind.ichimoku_span_a, ind.ichimoku_span_b)
+        cloud_bottom = min(ind.ichimoku_span_a, ind.ichimoku_span_b)
         if ltp > cloud_top:
-            trend += 15
-            key_signals.append("Above cloud bullish")
-        elif ltp < cloud_bot:
-            trend -= 15
-            key_signals.append("Below cloud bearish")
-        else:
-            key_signals.append("Inside cloud - neutral")
-
-    slope = ind.slope_20
-    if slope is not None:
-        if slope > 0.5:
             trend += 10
-            key_signals.append("Upward trend")
-        elif slope < -0.5:
+            add_signal("Price is above the Ichimoku cloud")
+        elif ltp < cloud_bottom:
             trend -= 10
-            key_signals.append("Downward trend")
+            add_signal("Price is below the Ichimoku cloud")
+
+    if ind.slope_20 is not None:
+        if ind.slope_20 > 0.3:
+            trend += 6
+        elif ind.slope_20 < -0.3:
+            trend -= 6
 
     trend = _clamp(trend)
 
-    # ── Volume Score (weight 0.20) ────────────────────────────────────────────
     volume = 50.0
+    if ind.volume_ratio_20 is not None:
+        if ind.volume_ratio_20 >= 1.5 and diff_pct > 0:
+            volume += 14
+            add_signal("Price rise is backed by strong relative volume")
+        elif ind.volume_ratio_20 >= 1.2:
+            volume += 8
+        elif ind.volume_ratio_20 < 0.8 and diff_pct < 0:
+            volume -= 8
 
-    obv = ind.obv
-    diff = quote.diff
-    if obv is not None and diff is not None:
-        if obv > 0 and diff > 0:
-            volume += 20
-            key_signals.append("OBV confirms price rise")
-        elif obv < 0 and diff < 0:
-            volume -= 20
-            key_signals.append("OBV confirms decline")
-        elif obv > 0 and diff < 0:
-            volume += 10
-            key_signals.append("OBV bullish divergence")
+    if ind.anchored_vwap is not None and ltp:
+        if ltp > ind.anchored_vwap:
+            volume += 6
+            add_signal("Price is trading above anchored VWAP")
+        elif ltp < ind.anchored_vwap:
+            volume -= 6
+            add_signal("Price is trading below anchored VWAP")
 
-    kvo = ind.kvo
-    if kvo is not None:
-        if kvo > 0:
-            volume += 10
-            key_signals.append("Positive volume flow")
-        else:
-            volume -= 10
-            key_signals.append("Negative volume flow")
+    if ind.obv is not None:
+        if ind.obv > 0:
+            volume += 4
+        elif ind.obv < 0:
+            volume -= 4
 
-    mom = ind.momentum_5
-    if mom is not None:
-        if mom > 0:
-            volume += 10
-            key_signals.append("Positive momentum")
-        else:
-            volume -= 10
-            key_signals.append("Negative momentum")
+    if ind.mfi_14 is not None:
+        if 50 <= ind.mfi_14 <= 80:
+            volume += 4
+        elif 20 <= ind.mfi_14 < 50:
+            volume -= 2
 
     volume = _clamp(volume)
 
-    # ── Volatility Score (weight 0.10) ────────────────────────────────────────
     volatility = 50.0
-
-    bb_upper = ind.bb_upper
-    bb_lower = ind.bb_lower
-    if bb_upper is not None and bb_lower is not None and ltp:
-        bb_range = bb_upper - bb_lower
-        if bb_range > 0:
-            bb_pos = (ltp - bb_lower) / bb_range
-            if bb_pos < 0.2:
-                volatility += 15
-                key_signals.append("Near lower BB - potential bounce")
-            elif bb_pos > 0.8:
-                volatility -= 15
-                key_signals.append("Near upper BB - potential reversal")
-
-    chand_long = ind.chandelier_long
-    if chand_long is not None and ltp:
-        if ltp > chand_long:
+    if ind.bb_percent_b is not None:
+        if ind.bb_percent_b < 20:
             volatility += 10
-            key_signals.append("Above chandelier exit - stay long")
-        else:
+            add_signal("Price is near the lower Bollinger band")
+        elif ind.bb_percent_b > 80:
             volatility -= 10
-            key_signals.append("Below chandelier exit - caution")
+            add_signal("Price is near the upper Bollinger band")
+
+    atr_pct = (ind.atr_14 / ltp * 100) if ind.atr_14 and ltp else None
+    if atr_pct is not None:
+        if 2 <= atr_pct <= 6:
+            volatility += 6
+        elif atr_pct > 10:
+            volatility -= 8
+            add_signal("ATR is elevated versus price")
+
+    if ind.chandelier_long is not None and ltp:
+        if ltp > ind.chandelier_long:
+            volatility += 6
+        else:
+            volatility -= 6
+
+    if ind.supertrend_direction == "BULLISH":
+        volatility += 4
+    elif ind.supertrend_direction == "BEARISH":
+        volatility -= 4
 
     volatility = _clamp(volatility)
 
-    # ── Overall Score ─────────────────────────────────────────────────────────
-    overall = _clamp(osc * 0.35 + trend * 0.35 + volume * 0.20 + volatility * 0.10)
-
-    # ── Signal ────────────────────────────────────────────────────────────────
-    if overall >= 72:
+    overall = _clamp(osc * 0.30 + trend * 0.40 + volume * 0.18 + volatility * 0.12)
+    if overall >= 76:
         signal = "STRONG_BUY"
-    elif overall >= 60:
+    elif overall >= 62:
         signal = "BUY"
-    elif overall <= 28:
+    elif overall <= 24:
         signal = "STRONG_SELL"
-    elif overall <= 40:
+    elif overall <= 38:
         signal = "SELL"
     else:
         signal = "HOLD"
 
-    # ── Entry / Target / Stop (BUY signals only, using ATR) ──────────────────
     entry_price = target_price = stop_loss = risk_reward_ratio = None
-    atr = ind.atr_14
-    if signal in ("BUY", "STRONG_BUY") and ltp and atr:
-        entry_price = ltp
-        target_price = round(ltp + atr * 3, 2)
-        stop_loss = round(ltp - atr * 1.5, 2)
-        diff_to_stop = ltp - stop_loss
-        if diff_to_stop != 0:
-            risk_reward_ratio = round((target_price - ltp) / diff_to_stop, 2)
+    if signal in {"BUY", "STRONG_BUY"} and ltp and ind.atr_14:
+        entry_price = round(ltp, 2)
+        target_price = round(ltp + ind.atr_14 * 2.5, 2)
+        stop_loss = round(ltp - ind.atr_14 * 1.25, 2)
+        if entry_price > stop_loss:
+            risk_reward_ratio = round((target_price - entry_price) / (entry_price - stop_loss), 2)
+    elif signal in {"SELL", "STRONG_SELL"} and ltp and ind.atr_14:
+        entry_price = round(ltp, 2)
+        target_price = round(ltp - ind.atr_14 * 2.5, 2)
+        stop_loss = round(ltp + ind.atr_14 * 1.25, 2)
+        if stop_loss > entry_price:
+            risk_reward_ratio = round((entry_price - target_price) / (stop_loss - entry_price), 2)
 
     return AnalysisResult(
         symbol=symbol,
@@ -301,18 +327,18 @@ def analyze_stock(
         trend_score=round(trend, 2),
         volume_score=round(volume, 2),
         volatility_score=round(volatility, 2),
-        key_signals=key_signals,
+        key_signals=key_signals[:10],
         current_price=ltp or None,
         entry_price=entry_price,
         target_price=target_price,
         stop_loss=stop_loss,
         risk_reward_ratio=risk_reward_ratio,
-        analysis_date=datetime.now().strftime("%Y-%m-%d"),
+        analysis_date=quote.date or datetime.now().strftime("%Y-%m-%d"),
     )
 
 
 async def analyze_symbol_from_supabase(symbol: str) -> Optional[AnalysisResult]:
-    """Fetch latest indicators + quote from Supabase and run analysis engine."""
+    """Fetch recent OHLCV history and compute a detailed analysis."""
     return await analyze_symbol_from_supabase_as_of(symbol)
 
 
@@ -320,25 +346,20 @@ async def analyze_symbol_from_supabase_as_of(
     symbol: str,
     as_of_date: Optional[str] = None,
 ) -> Optional[AnalysisResult]:
-    """Fetch indicators + quote from Supabase up to `as_of_date` and run analysis."""
     try:
-        indicators, quote = await asyncio.gather(
-            SupabaseMarketService.get_latest_indicators(symbol, as_of_date=as_of_date),
-            SupabaseMarketService.get_latest_quote(symbol, as_of_date=as_of_date),
+        latest_quote, _, _, latest_indicator = await _load_analysis_inputs(
+            symbol,
+            as_of_date=as_of_date,
+            limit=_ANALYSIS_HISTORY_LIMIT,
         )
-        if not indicators or not quote:
+        if not latest_quote or not latest_indicator:
             return None
 
-        result = analyze_stock(symbol, indicators, quote)
-        result.analysis_date = indicators.date or quote.date or datetime.now().strftime("%Y-%m-%d")
+        result = analyze_stock(symbol.upper(), latest_indicator, latest_quote)
+        result.analysis_date = latest_indicator.date or latest_quote.date or datetime.now().strftime("%Y-%m-%d")
         return result
     except Exception as exc:
-        logger.error(
-            "analyze_symbol_from_supabase_as_of(%s, %s) error: %s",
-            symbol,
-            as_of_date,
-            exc,
-        )
+        logger.error("analyze_symbol_from_supabase_as_of(%s, %s) error: %s", symbol, as_of_date, exc)
         return None
 
 
@@ -347,10 +368,7 @@ async def get_top_stocks(
     signal_filter: Optional[str] = None,
     as_of_date: Optional[str] = None,
 ) -> list[AnalysisResult]:
-    """
-    Analyze all NEPSE symbols in parallel (semaphore=20), optionally filter
-    by signal, sort by overall_score descending, and return the top `limit`.
-    """
+    """Analyze all symbols in parallel and return the top ranked results."""
     symbols = await SupabaseMarketService.list_symbols()
     if not symbols:
         return []
@@ -361,172 +379,151 @@ async def get_top_stocks(
         async with semaphore:
             return await analyze_symbol_from_supabase_as_of(sym, as_of_date=as_of_date)
 
-    results_raw = await asyncio.gather(*[_analyze_with_sem(s) for s in symbols])
-    results: list[AnalysisResult] = [r for r in results_raw if r is not None]
+    results_raw = await asyncio.gather(*[_analyze_with_sem(symbol) for symbol in symbols])
+    results = [result for result in results_raw if result is not None]
 
     if signal_filter:
-        results = [r for r in results if r.signal == signal_filter.upper()]
+        results = [result for result in results if result.signal == signal_filter.upper()]
 
-    results.sort(key=lambda r: r.overall_score, reverse=True)
+    results.sort(key=lambda result: result.overall_score, reverse=True)
     return results[:limit]
 
 
-# ─── 360 View ────────────────────────────────────────────────────────────────
-
-from src.apps.market.supabase_schemas import IndicatorRow, HistoricDataRow
-from .schemas import (
-    IndicatorSignalSchema,
-    PerformanceMetricsSchema,
-    SimilarPeriodSchema,
-    TrendAnalysisSchema,
-    PricePoint,
-    Stock360Schema,
-)
-
-
-def _ind_signal(name: str, value: Optional[float], signal: str, interp: str) -> IndicatorSignalSchema:
-    return IndicatorSignalSchema(name=name, value=round(value, 2) if value is not None else None, signal=signal, interpretation=interp)
+def _ind_signal(name: str, value: Optional[float], signal: str, interpretation: str) -> IndicatorSignalSchema:
+    return IndicatorSignalSchema(
+        name=name,
+        value=round(value, 2) if value is not None else None,
+        signal=signal,
+        interpretation=interpretation,
+    )
 
 
 def _build_indicator_signals(ind: IndicatorRow, ltp: float) -> list[IndicatorSignalSchema]:
     signals: list[IndicatorSignalSchema] = []
 
-    # RSI
-    rsi = ind.rsi_14
-    if rsi is not None:
-        if rsi < 30:
-            sig, interp = "BULLISH", f"RSI {rsi:.1f} — oversold, potential reversal upward"
-        elif rsi > 70:
-            sig, interp = "BEARISH", f"RSI {rsi:.1f} — overbought, watch for pullback"
-        elif rsi < 45:
-            sig, interp = "NEUTRAL", f"RSI {rsi:.1f} — slightly below midline, mild weakness"
-        elif rsi > 55:
-            sig, interp = "NEUTRAL", f"RSI {rsi:.1f} — slightly above midline, mild strength"
+    if ind.rsi_14 is not None:
+        if ind.rsi_14 < 30:
+            sig, interp = "BULLISH", f"RSI {ind.rsi_14:.1f} is oversold on the default 14-period setting."
+        elif ind.rsi_14 > 70:
+            sig, interp = "BEARISH", f"RSI {ind.rsi_14:.1f} is overbought on the default 14-period setting."
         else:
-            sig, interp = "NEUTRAL", f"RSI {rsi:.1f} — neutral zone"
-        signals.append(_ind_signal("RSI (14)", rsi, sig, interp))
+            sig, interp = "NEUTRAL", f"RSI {ind.rsi_14:.1f} is in a neutral momentum range."
+        signals.append(_ind_signal("RSI (14)", ind.rsi_14, sig, interp))
 
-    # MACD
-    macd_l, macd_s, macd_h = ind.macd_line, ind.macd_signal, ind.macd_hist
-    if all(v is not None for v in (macd_l, macd_s, macd_h)):
-        if macd_h > 0 and macd_l > macd_s:  # type: ignore[operator]
-            sig, interp = "BULLISH", f"MACD histogram {macd_h:.2f} — bullish momentum above signal line"
-        elif macd_h < 0 and macd_l < macd_s:  # type: ignore[operator]
-            sig, interp = "BEARISH", f"MACD histogram {macd_h:.2f} — bearish momentum below signal line"
+    if all(value is not None for value in (ind.macd_line, ind.macd_signal, ind.macd_hist)):
+        if ind.macd_line > ind.macd_signal and ind.macd_hist > 0:  # type: ignore[operator]
+            sig, interp = "BULLISH", f"MACD ({ind.macd_line:.2f}) is above its signal ({ind.macd_signal:.2f}) with a positive histogram."
+        elif ind.macd_line < ind.macd_signal and ind.macd_hist < 0:  # type: ignore[operator]
+            sig, interp = "BEARISH", f"MACD ({ind.macd_line:.2f}) is below its signal ({ind.macd_signal:.2f}) with a negative histogram."
         else:
-            sig, interp = "NEUTRAL", f"MACD histogram {macd_h:.2f} — mixed/crossover zone"
-        signals.append(_ind_signal("MACD", macd_h, sig, interp))
+            sig, interp = "NEUTRAL", f"MACD histogram {ind.macd_hist:.2f} is near a transition zone."
+        signals.append(_ind_signal("MACD (12,26,9)", ind.macd_hist, sig, interp))
 
-    # Stochastic
-    k, d = ind.stoch_k, ind.stoch_d
-    if k is not None and d is not None:
-        if k < 20 and d < 20:
-            sig, interp = "BULLISH", f"Stoch K={k:.1f} D={d:.1f} — oversold, watch for bullish crossover"
-        elif k > 80 and d > 80:
-            sig, interp = "BEARISH", f"Stoch K={k:.1f} D={d:.1f} — overbought, watch for bearish crossover"
-        elif k > d:
-            sig, interp = "BULLISH", f"Stoch K={k:.1f} > D={d:.1f} — bullish crossover"
+    if ind.stoch_k is not None and ind.stoch_d is not None:
+        if ind.stoch_k < 20 and ind.stoch_d < 20:
+            sig, interp = "BULLISH", f"Stochastic K/D ({ind.stoch_k:.1f}/{ind.stoch_d:.1f}) is in oversold territory."
+        elif ind.stoch_k > 80 and ind.stoch_d > 80:
+            sig, interp = "BEARISH", f"Stochastic K/D ({ind.stoch_k:.1f}/{ind.stoch_d:.1f}) is in overbought territory."
+        elif ind.stoch_k > ind.stoch_d:
+            sig, interp = "BULLISH", f"Stochastic K ({ind.stoch_k:.1f}) is above D ({ind.stoch_d:.1f})."
         else:
-            sig, interp = "BEARISH", f"Stoch K={k:.1f} < D={d:.1f} — bearish crossover"
-        signals.append(_ind_signal("Stochastic", k, sig, interp))
+            sig, interp = "BEARISH", f"Stochastic K ({ind.stoch_k:.1f}) is below D ({ind.stoch_d:.1f})."
+        signals.append(_ind_signal("Stochastic (14,3,3)", ind.stoch_k, sig, interp))
 
-    # ADX
-    adx, pdi, mdi = ind.adx_14, ind.plus_di, ind.minus_di
-    if adx is not None:
-        if adx < 20:
-            sig, interp = "NEUTRAL", f"ADX {adx:.1f} — weak/ranging market, no clear trend"
-        elif pdi is not None and mdi is not None:
-            if adx > 25 and pdi > mdi:
-                sig, interp = "BULLISH", f"ADX {adx:.1f} with +DI {pdi:.1f} > -DI {mdi:.1f} — strong uptrend"
-            elif adx > 25 and mdi > pdi:
-                sig, interp = "BEARISH", f"ADX {adx:.1f} with -DI {mdi:.1f} > +DI {pdi:.1f} — strong downtrend"
+    if ind.adx_14 is not None:
+        if ind.plus_di is not None and ind.minus_di is not None and ind.adx_14 > 25:
+            if ind.plus_di > ind.minus_di:
+                sig, interp = "BULLISH", f"ADX {ind.adx_14:.1f} confirms a strong uptrend with +DI above -DI."
+            elif ind.minus_di > ind.plus_di:
+                sig, interp = "BEARISH", f"ADX {ind.adx_14:.1f} confirms a strong downtrend with -DI above +DI."
             else:
-                sig, interp = "NEUTRAL", f"ADX {adx:.1f} — moderate trend, DI mixed"
+                sig, interp = "NEUTRAL", f"ADX {ind.adx_14:.1f} shows trend strength but DI lines are mixed."
+        elif ind.adx_14 < 18:
+            sig, interp = "NEUTRAL", f"ADX {ind.adx_14:.1f} suggests a weak or ranging market."
         else:
-            sig, interp = "NEUTRAL", f"ADX {adx:.1f} — moderate strength"
-        signals.append(_ind_signal("ADX (14)", adx, sig, interp))
+            sig, interp = "NEUTRAL", f"ADX {ind.adx_14:.1f} suggests a moderate trend."
+        signals.append(_ind_signal("ADX / DMI", ind.adx_14, sig, interp))
 
-    # Bollinger Bands
-    bb_upper, bb_lower = ind.bb_upper, ind.bb_lower
-    if bb_upper is not None and bb_lower is not None and ltp:
-        bb_mid = (bb_upper + bb_lower) / 2
-        bb_width_pct = (bb_upper - bb_lower) / bb_mid * 100 if bb_mid else 0
-        if ltp > bb_upper:
-            sig, interp = "BEARISH", f"Price {ltp:.2f} above upper BB {bb_upper:.2f} — overbought / breakout watch"
-        elif ltp < bb_lower:
-            sig, interp = "BULLISH", f"Price {ltp:.2f} below lower BB {bb_lower:.2f} — oversold / bounce watch"
-        elif ltp > bb_mid:
-            sig, interp = "BULLISH", f"Price in upper Bollinger half, bandwidth {bb_width_pct:.1f}%"
+    if ind.bb_percent_b is not None and ind.bb_width_pct is not None:
+        if ind.bb_percent_b < 20:
+            sig, interp = "BULLISH", f"Percent B is {ind.bb_percent_b:.1f}, placing price near the lower Bollinger band."
+        elif ind.bb_percent_b > 80:
+            sig, interp = "BEARISH", f"Percent B is {ind.bb_percent_b:.1f}, placing price near the upper Bollinger band."
         else:
-            sig, interp = "BEARISH", f"Price in lower Bollinger half, bandwidth {bb_width_pct:.1f}%"
-        signals.append(_ind_signal("Bollinger Bands", ltp, sig, interp))
+            sig, interp = "NEUTRAL", f"Price is inside the Bollinger envelope with bandwidth {ind.bb_width_pct:.1f}%."
+        signals.append(_ind_signal("Bollinger Bands (20,2)", ind.bb_percent_b, sig, interp))
 
-    # CCI
-    cci = ind.cci_20
-    if cci is not None:
-        if cci < -100:
-            sig, interp = "BULLISH", f"CCI {cci:.1f} — deeply oversold territory"
-        elif cci > 100:
-            sig, interp = "BEARISH", f"CCI {cci:.1f} — deeply overbought territory"
+    if ind.cci_20 is not None:
+        if ind.cci_20 < -100:
+            sig, interp = "BULLISH", f"CCI {ind.cci_20:.1f} indicates a deeply oversold reading."
+        elif ind.cci_20 > 100:
+            sig, interp = "BEARISH", f"CCI {ind.cci_20:.1f} indicates a stretched upside reading."
         else:
-            sig, interp = "NEUTRAL", f"CCI {cci:.1f} — within normal range"
-        signals.append(_ind_signal("CCI (20)", cci, sig, interp))
+            sig, interp = "NEUTRAL", f"CCI {ind.cci_20:.1f} is broadly neutral."
+        signals.append(_ind_signal("CCI (20)", ind.cci_20, sig, interp))
 
-    # Williams %R
-    wr = ind.williams_r
-    if wr is not None:
-        if wr < -80:
-            sig, interp = "BULLISH", f"Williams %R {wr:.1f} — oversold"
-        elif wr > -20:
-            sig, interp = "BEARISH", f"Williams %R {wr:.1f} — overbought"
+    if ind.williams_r is not None:
+        if ind.williams_r < -80:
+            sig, interp = "BULLISH", f"Williams %R {ind.williams_r:.1f} is in oversold territory."
+        elif ind.williams_r > -20:
+            sig, interp = "BEARISH", f"Williams %R {ind.williams_r:.1f} is in overbought territory."
         else:
-            sig, interp = "NEUTRAL", f"Williams %R {wr:.1f} — neutral"
-        signals.append(_ind_signal("Williams %R", wr, sig, interp))
+            sig, interp = "NEUTRAL", f"Williams %R {ind.williams_r:.1f} is neutral."
+        signals.append(_ind_signal("Williams %R (14)", ind.williams_r, sig, interp))
 
-    # MFI
-    mfi = ind.mfi_14
-    if mfi is not None:
-        if mfi < 20:
-            sig, interp = "BULLISH", f"MFI {mfi:.1f} — oversold with volume confirmation"
-        elif mfi > 80:
-            sig, interp = "BEARISH", f"MFI {mfi:.1f} — overbought with volume confirmation"
+    if ind.mfi_14 is not None:
+        if ind.mfi_14 < 20:
+            sig, interp = "BULLISH", f"MFI {ind.mfi_14:.1f} shows oversold money flow."
+        elif ind.mfi_14 > 80:
+            sig, interp = "BEARISH", f"MFI {ind.mfi_14:.1f} shows overbought money flow."
         else:
-            sig, interp = "NEUTRAL", f"MFI {mfi:.1f} — normal money flow"
-        signals.append(_ind_signal("MFI (14)", mfi, sig, interp))
+            sig, interp = "NEUTRAL", f"MFI {ind.mfi_14:.1f} is balanced."
+        signals.append(_ind_signal("MFI (14)", ind.mfi_14, sig, interp))
 
-    # SMA alignment
-    sma5, sma20, sma50, sma200 = ind.sma_5, ind.sma_20, ind.sma_50, ind.sma_200
-    if sma50 is not None and sma200 is not None:
-        if sma50 > sma200:
-            sig, interp = "BULLISH", f"Golden Cross: SMA50 ({sma50:.2f}) > SMA200 ({sma200:.2f})"
+    if ind.supertrend_10_3 is not None and ind.supertrend_direction:
+        if ind.supertrend_direction == "BULLISH":
+            sig, interp = "BULLISH", f"Supertrend (10,3) is bullish with support near {ind.supertrend_10_3:.2f}."
         else:
-            sig, interp = "BEARISH", f"Death Cross: SMA50 ({sma50:.2f}) < SMA200 ({sma200:.2f})"
-        signals.append(_ind_signal("SMA Cross (50/200)", sma50, sig, interp))
+            sig, interp = "BEARISH", f"Supertrend (10,3) is bearish with resistance near {ind.supertrend_10_3:.2f}."
+        signals.append(_ind_signal("Supertrend (10,3)", ind.supertrend_10_3, sig, interp))
 
-    # Ichimoku
-    ichi_conv, ichi_base = ind.ichimoku_conversion, ind.ichimoku_base
-    span_a, span_b = ind.ichimoku_span_a, ind.ichimoku_span_b
-    if all(v is not None for v in (ichi_conv, ichi_base, span_a, span_b)) and ltp:
-        cloud_top = max(span_a, span_b)  # type: ignore[type-var]
-        cloud_bot = min(span_a, span_b)  # type: ignore[type-var]
-        if ltp > cloud_top and ichi_conv > ichi_base:  # type: ignore[operator]
-            sig, interp = "BULLISH", "Price above Ichimoku cloud, bullish TK cross"
-        elif ltp < cloud_bot and ichi_conv < ichi_base:  # type: ignore[operator]
-            sig, interp = "BEARISH", "Price below Ichimoku cloud, bearish TK cross"
-        elif ltp > cloud_top:
-            sig, interp = "BULLISH", "Price above Ichimoku cloud"
-        elif ltp < cloud_bot:
-            sig, interp = "BEARISH", "Price below Ichimoku cloud"
+    if ind.anchored_vwap is not None and ltp:
+        if ltp > ind.anchored_vwap:
+            sig, interp = "BULLISH", f"Price {ltp:.2f} is above anchored VWAP {ind.anchored_vwap:.2f}."
+        elif ltp < ind.anchored_vwap:
+            sig, interp = "BEARISH", f"Price {ltp:.2f} is below anchored VWAP {ind.anchored_vwap:.2f}."
         else:
-            sig, interp = "NEUTRAL", "Price inside Ichimoku cloud — indecision zone"
-        signals.append(_ind_signal("Ichimoku", ltp, sig, interp))
+            sig, interp = "NEUTRAL", "Price is sitting on anchored VWAP."
+        signals.append(_ind_signal("Anchored VWAP", ind.anchored_vwap, sig, interp))
 
-    # OBV (directional only)
-    obv = ind.obv
-    if obv is not None:
-        sig = "BULLISH" if obv > 0 else ("BEARISH" if obv < 0 else "NEUTRAL")
-        interp = f"OBV {obv:,.0f} — {'accumulation' if obv > 0 else 'distribution'} phase"
-        signals.append(_ind_signal("OBV", obv, sig, interp))
+    if ind.volume_ratio_20 is not None:
+        if ind.volume_ratio_20 >= 1.5:
+            sig, interp = "BULLISH", f"Volume is {ind.volume_ratio_20:.2f}x the 20-day average."
+        elif ind.volume_ratio_20 < 0.8:
+            sig, interp = "BEARISH", f"Volume is only {ind.volume_ratio_20:.2f}x the 20-day average."
+        else:
+            sig, interp = "NEUTRAL", f"Volume is {ind.volume_ratio_20:.2f}x the 20-day average."
+        signals.append(_ind_signal("Relative Volume (20)", ind.volume_ratio_20, sig, interp))
+
+    if ind.roc_10 is not None:
+        if ind.roc_10 > 5:
+            sig, interp = "BULLISH", f"10-day ROC is {ind.roc_10:.2f}%."
+        elif ind.roc_10 < -5:
+            sig, interp = "BEARISH", f"10-day ROC is {ind.roc_10:.2f}%."
+        else:
+            sig, interp = "NEUTRAL", f"10-day ROC is {ind.roc_10:.2f}%."
+        signals.append(_ind_signal("ROC (10)", ind.roc_10, sig, interp))
+
+    if all(value is not None for value in (ind.ichimoku_conversion, ind.ichimoku_base, ind.ichimoku_span_a, ind.ichimoku_span_b)) and ltp:
+        cloud_top = max(ind.ichimoku_span_a, ind.ichimoku_span_b)  # type: ignore[type-var]
+        cloud_bottom = min(ind.ichimoku_span_a, ind.ichimoku_span_b)  # type: ignore[type-var]
+        if ltp > cloud_top and ind.ichimoku_conversion > ind.ichimoku_base:  # type: ignore[operator]
+            sig, interp = "BULLISH", "Price is above the cloud and the conversion line is above the base line."
+        elif ltp < cloud_bottom and ind.ichimoku_conversion < ind.ichimoku_base:  # type: ignore[operator]
+            sig, interp = "BEARISH", "Price is below the cloud and the conversion line is below the base line."
+        else:
+            sig, interp = "NEUTRAL", "Ichimoku components are mixed."
+        signals.append(_ind_signal("Ichimoku (9,26,52)", ltp, sig, interp))
 
     return signals
 
@@ -536,20 +533,18 @@ def _calc_performance(history: list[HistoricDataRow]) -> PerformanceMetricsSchem
     if len(history) < 2:
         return PerformanceMetricsSchema()
 
-    closes = [(r.date or "", r.ltp or r.close or 0.0) for r in history if (r.ltp or r.close)]
-    if not closes:
+    closes = [(row.date or "", _price(row)) for row in history if _price(row) > 0]
+    if len(closes) < 2:
         return PerformanceMetricsSchema()
 
     latest_date_str, latest_price = closes[-1]
     latest_date = datetime.strptime(latest_date_str, "%Y-%m-%d") if latest_date_str else datetime.now()
 
-    def price_n_days_ago(n: int) -> Optional[float]:
-        target = latest_date - timedelta(days=n)
-        # Find the closest date at or before target
+    def price_n_days_ago(days: int) -> Optional[float]:
+        target = latest_date - timedelta(days=days)
         for date_str, price in reversed(closes[:-1]):
             try:
-                d = datetime.strptime(date_str, "%Y-%m-%d")
-                if d <= target:
+                if datetime.strptime(date_str, "%Y-%m-%d") <= target:
                     return price
             except ValueError:
                 continue
@@ -560,43 +555,39 @@ def _calc_performance(history: list[HistoricDataRow]) -> PerformanceMetricsSchem
             return round((latest_price - old_price) / old_price * 100, 2)
         return None
 
-    # YTD: from start of current year
     ytd_base: Optional[float] = None
     for date_str, price in closes:
         try:
-            d = datetime.strptime(date_str, "%Y-%m-%d")
-            if d.year == latest_date.year:
-                ytd_base = price
-                break
+            current_date = datetime.strptime(date_str, "%Y-%m-%d")
         except ValueError:
             continue
+        if current_date.year == latest_date.year:
+            ytd_base = price
+            break
 
-    # Volatility: 20-day daily returns annualized
     recent_20 = closes[-21:]
-    daily_returns = []
-    for i in range(1, len(recent_20)):
-        p0, p1 = recent_20[i - 1][1], recent_20[i][1]
-        if p0 > 0 and p1 > 0:
-            daily_returns.append(math.log(p1 / p0))
+    daily_returns: list[float] = []
+    for index in range(1, len(recent_20)):
+        previous_price = recent_20[index - 1][1]
+        current_price = recent_20[index][1]
+        if previous_price > 0 and current_price > 0:
+            daily_returns.append(math.log(current_price / previous_price))
+
     vol_20d: Optional[float] = None
     if len(daily_returns) >= 5:
-        mean_r = sum(daily_returns) / len(daily_returns)
-        variance = sum((r - mean_r) ** 2 for r in daily_returns) / len(daily_returns)
+        mean_return = sum(daily_returns) / len(daily_returns)
+        variance = sum((value - mean_return) ** 2 for value in daily_returns) / len(daily_returns)
         vol_20d = round(math.sqrt(variance) * math.sqrt(252) * 100, 2)
 
-    # Max drawdown (entire history)
     peak = closes[0][1]
-    max_dd = 0.0
+    max_drawdown = 0.0
     for _, price in closes:
-        if price > peak:
-            peak = price
-        dd = (peak - price) / peak * 100 if peak > 0 else 0
-        if dd > max_dd:
-            max_dd = dd
+        peak = max(peak, price)
+        drawdown = (peak - price) / peak * 100 if peak > 0 else 0.0
+        max_drawdown = max(max_drawdown, drawdown)
 
-    # Avg volume 20 days
-    vols = [r.vol for r in history[-20:] if r.vol is not None and r.vol > 0]
-    avg_vol = round(sum(vols) / len(vols)) if vols else None
+    volumes = [row.vol for row in history[-20:] if row.vol is not None and row.vol > 0]
+    avg_volume = round(sum(volumes) / len(volumes)) if volumes else None
 
     return PerformanceMetricsSchema(
         week_1_pct=return_pct(price_n_days_ago(7)),
@@ -605,34 +596,23 @@ def _calc_performance(history: list[HistoricDataRow]) -> PerformanceMetricsSchem
         month_6_pct=return_pct(price_n_days_ago(180)),
         year_1_pct=return_pct(price_n_days_ago(365)),
         ytd_pct=return_pct(ytd_base),
-        max_drawdown_pct=round(max_dd, 2) if max_dd else None,
+        max_drawdown_pct=round(max_drawdown, 2) if max_drawdown else None,
         volatility_20d_annualized=vol_20d,
-        avg_volume_20d=avg_vol,
+        avg_volume_20d=avg_volume,
     )
 
 
 def _build_trend_analysis(ind: IndicatorRow, ltp: float, history: list[HistoricDataRow]) -> TrendAnalysisSchema:
     """Derive trend direction, strength, support/resistance from indicators and price history."""
-    sma20, sma50, sma200 = ind.sma_20, ind.sma_50, ind.sma_200
-    ema200 = ind.ema_200
-    adx = ind.adx_14
-    pdi, mdi = ind.plus_di, ind.minus_di
-
-    # MA alignment
     bullish_mas = 0
     bearish_mas = 0
-    if sma20 and ltp > sma20:
-        bullish_mas += 1
-    elif sma20:
-        bearish_mas += 1
-    if sma50 and ltp > sma50:
-        bullish_mas += 1
-    elif sma50:
-        bearish_mas += 1
-    if sma200 and ltp > sma200:
-        bullish_mas += 1
-    elif sma200:
-        bearish_mas += 1
+    for moving_average in (ind.sma_20, ind.sma_50, ind.sma_200):
+        if moving_average is None:
+            continue
+        if ltp > moving_average:
+            bullish_mas += 1
+        else:
+            bearish_mas += 1
 
     if bullish_mas >= 2:
         ma_alignment = "BULLISH"
@@ -641,62 +621,57 @@ def _build_trend_analysis(ind: IndicatorRow, ltp: float, history: list[HistoricD
     else:
         ma_alignment = "MIXED"
 
-    # Primary trend
-    if adx is not None and adx > 25:
-        if pdi and mdi and pdi > mdi:
+    if ind.adx_14 is not None and ind.adx_14 > 25 and ind.plus_di is not None and ind.minus_di is not None:
+        if ind.plus_di > ind.minus_di:
             primary_trend = "UPTREND"
-        elif pdi and mdi and mdi > pdi:
+        elif ind.minus_di > ind.plus_di:
             primary_trend = "DOWNTREND"
         else:
             primary_trend = "SIDEWAYS"
-    elif ma_alignment == "BULLISH":
+    elif ind.supertrend_direction == "BULLISH" or ma_alignment == "BULLISH":
         primary_trend = "UPTREND"
-    elif ma_alignment == "BEARISH":
+    elif ind.supertrend_direction == "BEARISH" or ma_alignment == "BEARISH":
         primary_trend = "DOWNTREND"
     else:
         primary_trend = "SIDEWAYS"
 
-    # Trend strength
-    if adx is not None:
-        if adx > 35:
+    if ind.adx_14 is not None:
+        if ind.adx_14 > 35:
             trend_strength = "STRONG"
-        elif adx > 20:
+        elif ind.adx_14 > 20:
             trend_strength = "MODERATE"
         else:
             trend_strength = "WEAK"
     else:
-        trend_strength = "MODERATE" if ma_alignment != "MIXED" else "WEAK"
+        trend_strength = "MODERATE" if primary_trend != "SIDEWAYS" else "WEAK"
 
-    # Support & resistance from recent 60 price bars
-    recent = history[-60:] if len(history) >= 60 else history
-    lows = [r.low for r in recent if r.low is not None and r.low > 0]
-    highs = [r.high for r in recent if r.high is not None and r.high > 0]
-    support = round(min(lows) * 1.005, 2) if lows else None    # slight buffer above absolute low
-    resistance = round(max(highs) * 0.995, 2) if highs else None
+    recent_history = history[-60:] if len(history) >= 60 else history
+    lows = [row.low for row in recent_history if row.low is not None and row.low > 0]
+    highs = [row.high for row in recent_history if row.high is not None and row.high > 0]
+    support = ind.support_1 or (round(min(lows) * 1.005, 2) if lows else None)
+    resistance = ind.resistance_1 or (round(max(highs) * 0.995, 2) if highs else None)
 
-    # Golden / death cross
-    golden = bool(sma50 and sma200 and sma50 > sma200)
-    death = bool(sma50 and sma200 and sma50 < sma200)
+    golden_cross = bool(ind.sma_50 and ind.sma_200 and ind.sma_50 > ind.sma_200)
+    death_cross = bool(ind.sma_50 and ind.sma_200 and ind.sma_50 < ind.sma_200)
 
-    # Ichimoku signal
-    span_a, span_b = ind.ichimoku_span_a, ind.ichimoku_span_b
-    ichi_conv, ichi_base = ind.ichimoku_conversion, ind.ichimoku_base
     ichimoku_signal: Optional[str] = None
-    if all(v is not None for v in (span_a, span_b)) and ltp:
-        cloud_top = max(span_a, span_b)  # type: ignore[type-var]
-        cloud_bot = min(span_a, span_b)  # type: ignore[type-var]
+    if ind.ichimoku_span_a is not None and ind.ichimoku_span_b is not None and ltp:
+        cloud_top = max(ind.ichimoku_span_a, ind.ichimoku_span_b)
+        cloud_bottom = min(ind.ichimoku_span_a, ind.ichimoku_span_b)
         if ltp > cloud_top:
             ichimoku_signal = "BULLISH"
-        elif ltp < cloud_bot:
+        elif ltp < cloud_bottom:
             ichimoku_signal = "BEARISH"
         else:
             ichimoku_signal = "NEUTRAL"
 
-    # Build summary text
-    cross_txt = "Golden Cross (SMA50>SMA200)" if golden else "Death Cross (SMA50<SMA200)" if death else ""
-    ichi_txt = f"Ichimoku: {ichimoku_signal}." if ichimoku_signal else ""
-    strength_txt = f"{trend_strength.lower()} {primary_trend.lower().replace('_', ' ')}"
-    summary = f"{symbol_placeholder_replace(strength_txt)}. MA alignment: {ma_alignment}. {cross_txt} {ichi_txt}".strip(" .")
+    supertrend_note = f" Supertrend is {ind.supertrend_direction.lower()}." if ind.supertrend_direction else ""
+    ichimoku_note = f" Ichimoku is {ichimoku_signal.lower()}." if ichimoku_signal else ""
+    summary = (
+        f"{primary_trend.capitalize()} bias with {trend_strength.lower()} conviction. "
+        f"MA alignment is {ma_alignment.lower()}."
+        f"{supertrend_note}{ichimoku_note}"
+    ).strip()
 
     return TrendAnalysisSchema(
         primary_trend=primary_trend,
@@ -704,156 +679,208 @@ def _build_trend_analysis(ind: IndicatorRow, ltp: float, history: list[HistoricD
         ma_alignment=ma_alignment,
         support_level=support,
         resistance_level=resistance,
-        price_vs_sma20=("ABOVE" if sma20 and ltp > sma20 else "BELOW") if sma20 else None,
-        price_vs_sma50=("ABOVE" if sma50 and ltp > sma50 else "BELOW") if sma50 else None,
-        price_vs_sma200=("ABOVE" if sma200 and ltp > sma200 else "BELOW") if sma200 else None,
-        golden_cross=golden,
-        death_cross=death,
+        price_vs_sma20=("ABOVE" if ind.sma_20 and ltp > ind.sma_20 else "BELOW") if ind.sma_20 else None,
+        price_vs_sma50=("ABOVE" if ind.sma_50 and ltp > ind.sma_50 else "BELOW") if ind.sma_50 else None,
+        price_vs_sma200=("ABOVE" if ind.sma_200 and ltp > ind.sma_200 else "BELOW") if ind.sma_200 else None,
+        golden_cross=golden_cross,
+        death_cross=death_cross,
         ichimoku_signal=ichimoku_signal,
         summary=summary,
     )
 
 
-def symbol_placeholder_replace(text: str) -> str:
-    """Helper to capitalise first char."""
-    return text.capitalize() if text else text
-
-
 def _find_similar_periods(
     history: list[HistoricDataRow],
-    ind_history: list[IndicatorRow],
+    indicator_history: list[IndicatorRow],
     lookback: int = 20,
     top_n: int = 5,
 ) -> list[SimilarPeriodSchema]:
-    """
-    Find historical periods with similar indicator fingerprints to the current state.
-    Uses a normalized feature vector of [rsi, macd_hist_norm, adx_norm, stoch_k, cci_norm, mfi].
-    Returns top_n matches (minimum 60 trading days apart from each other).
-    """
-    if len(ind_history) < lookback + 35:
+    """Find historical windows with similar indicator fingerprints."""
+    if len(indicator_history) < lookback + 35:
         return []
 
-    # Build date->row maps for quick lookup
-    ind_map = {r.date: r for r in ind_history if r.date}
-    hist_map = {r.date: r for r in history if r.date}
-    dates = sorted(ind_map.keys())
+    indicator_map = {row.date: row for row in indicator_history if row.date}
+    history_map = {row.date: row for row in history if row.date}
+    dates = sorted(indicator_map.keys())
 
-    def _feature(row: IndicatorRow) -> Optional[list[float]]:
-        vals = [
+    def feature(row: IndicatorRow) -> Optional[list[float]]:
+        values = [
             (row.rsi_14 or 50.0) / 100.0,
             max(-1.0, min(1.0, (row.macd_hist or 0.0) / 10.0)),
             (row.adx_14 or 20.0) / 100.0,
             (row.stoch_k or 50.0) / 100.0,
             max(-1.0, min(1.0, (row.cci_20 or 0.0) / 200.0)),
             (row.mfi_14 or 50.0) / 100.0,
-            (row.williams_r or -50.0 + 100.0) / 100.0,  # shift to 0-1
+            ((row.williams_r or -50.0) + 100.0) / 100.0,
+            max(-1.0, min(1.0, (row.roc_10 or 0.0) / 15.0)),
+            1.0 if row.supertrend_direction == "BULLISH" else 0.0 if row.supertrend_direction == "BEARISH" else 0.5,
         ]
-        if all(not math.isfinite(v) for v in vals):
+        if all(not math.isfinite(value) for value in values):
             return None
-        return vals
+        return values
 
-    def _cosine_sim(a: list[float], b: list[float]) -> float:
-        dot = sum(x * y for x, y in zip(a, b))
-        mag_a = math.sqrt(sum(x * x for x in a))
-        mag_b = math.sqrt(sum(x * x for x in b))
-        if mag_a == 0 or mag_b == 0:
+    def cosine_similarity(left: list[float], right: list[float]) -> float:
+        dot = sum(a * b for a, b in zip(left, right))
+        magnitude_left = math.sqrt(sum(value * value for value in left))
+        magnitude_right = math.sqrt(sum(value * value for value in right))
+        if magnitude_left == 0 or magnitude_right == 0:
             return 0.0
-        return dot / (mag_a * mag_b)
+        return dot / (magnitude_left * magnitude_right)
 
-    # Current fingerprint = average over last `lookback` indicator rows
-    current_rows = [ind_map[d] for d in dates[-lookback:] if d in ind_map]
-    if not current_rows:
+    current_rows = [indicator_map[date] for date in dates[-lookback:] if date in indicator_map]
+    current_features = [values for row in current_rows if (values := feature(row))]
+    if not current_features:
         return []
 
-    current_features_list = [_feature(r) for r in current_rows if _feature(r)]
-    if not current_features_list:
-        return []
+    feature_count = len(current_features[0])
+    current_fingerprint = [
+        sum(values[index] for values in current_features) / len(current_features)
+        for index in range(feature_count)
+    ]
 
-    n_feat = len(current_features_list[0])
-    current_fp = [sum(f[i] for f in current_features_list) / len(current_features_list) for i in range(n_feat)]
-
-    # Score each historical window (exclude last 90 days to avoid trivial matches)
     candidate_dates = dates[:-90] if len(dates) > 90 else []
     candidates: list[tuple[str, float]] = []
-
-    for i in range(lookback, len(candidate_dates)):
-        window_dates = candidate_dates[i - lookback:i]
-        window_rows = [ind_map[d] for d in window_dates if d in ind_map]
-        window_features_list = [_feature(r) for r in window_rows if _feature(r)]
-        if not window_features_list:
+    for index in range(lookback, len(candidate_dates)):
+        window_dates = candidate_dates[index - lookback:index]
+        window_features = [values for date in window_dates if (values := feature(indicator_map[date]))]
+        if not window_features:
             continue
-        fp = [sum(f[j] for f in window_features_list) / len(window_features_list) for j in range(n_feat)]
-        sim = _cosine_sim(current_fp, fp)
-        candidates.append((candidate_dates[i], sim))
+        window_fingerprint = [
+            sum(values[feature_index] for values in window_features) / len(window_features)
+            for feature_index in range(feature_count)
+        ]
+        candidates.append((candidate_dates[index], cosine_similarity(current_fingerprint, window_fingerprint)))
 
-    # Sort by similarity desc, enforce minimum 60-day separation between selected dates
-    candidates.sort(key=lambda x: x[1], reverse=True)
+    candidates.sort(key=lambda item: item[1], reverse=True)
     selected: list[SimilarPeriodSchema] = []
     used_dates: list[str] = []
 
-    for end_date_str, sim_score in candidates:
+    for end_date_str, similarity_score in candidates:
         if len(selected) >= top_n:
             break
-        # Check separation from already selected
-        too_close = False
-        for ud in used_dates:
-            try:
-                delta = abs((datetime.strptime(end_date_str, "%Y-%m-%d") - datetime.strptime(ud, "%Y-%m-%d")).days)
-                if delta < 60:
-                    too_close = True
-                    break
-            except ValueError:
-                continue
-        if too_close:
+
+        try:
+            end_date = datetime.strptime(end_date_str, "%Y-%m-%d")
+        except ValueError:
             continue
 
-        # Get start date (lookback bars before end_date)
-        end_idx = dates.index(end_date_str) if end_date_str in dates else -1
-        start_date_str = dates[max(0, end_idx - lookback)] if end_idx >= 0 else end_date_str
+        if any(abs((end_date - datetime.strptime(date_str, "%Y-%m-%d")).days) < 60 for date_str in used_dates):
+            continue
 
-        # Calculate forward 30-day return after this pattern
-        forward_price: Optional[float] = None
-        end_hist = hist_map.get(end_date_str)
-        if end_hist:
-            base_price = end_hist.ltp or end_hist.close
-            if base_price:
-                fwd_target = datetime.strptime(end_date_str, "%Y-%m-%d") + timedelta(days=30)
-                for d in sorted(dates):
-                    try:
-                        if datetime.strptime(d, "%Y-%m-%d") >= fwd_target:
-                            fwd_hist = hist_map.get(d)
-                            if fwd_hist:
-                                forward_price = fwd_hist.ltp or fwd_hist.close
-                            break
-                    except ValueError:
-                        continue
-                if forward_price and base_price > 0:
-                    fwd_ret = round((forward_price - base_price) / base_price * 100, 2)
-                else:
-                    fwd_ret = None
-            else:
-                fwd_ret = None
-        else:
-            fwd_ret = None
+        end_index = dates.index(end_date_str)
+        start_date_str = dates[max(0, end_index - lookback)]
 
-        outcome = "BULLISH" if fwd_ret and fwd_ret > 2 else ("BEARISH" if fwd_ret and fwd_ret < -2 else "NEUTRAL")
-        desc = (
-            f"Similar indicator pattern from {start_date_str} to {end_date_str}. "
-            f"Similarity: {sim_score * 100:.0f}%. "
-            + (f"Followed by {fwd_ret:+.1f}% in next 30 days." if fwd_ret is not None else "Forward return unavailable.")
+        forward_return: Optional[float] = None
+        end_history = history_map.get(end_date_str)
+        base_price = _price(end_history) if end_history else 0.0
+        if base_price > 0:
+            target_date = end_date + timedelta(days=30)
+            for date_str in dates[end_index + 1:]:
+                try:
+                    if datetime.strptime(date_str, "%Y-%m-%d") >= target_date:
+                        future_history = history_map.get(date_str)
+                        future_price = _price(future_history) if future_history else 0.0
+                        if future_price > 0:
+                            forward_return = round((future_price - base_price) / base_price * 100, 2)
+                        break
+                except ValueError:
+                    continue
+
+        outcome = "BULLISH" if forward_return and forward_return > 2 else "BEARISH" if forward_return and forward_return < -2 else "NEUTRAL"
+        description = (
+            f"Similar indicator state from {start_date_str} to {end_date_str}. "
+            f"Similarity score {similarity_score * 100:.0f}%."
         )
+        if forward_return is not None:
+            description += f" It was followed by {forward_return:+.1f}% over the next 30 days."
+        else:
+            description += " Forward 30-day return was unavailable."
 
-        selected.append(SimilarPeriodSchema(
-            start_date=start_date_str,
-            end_date=end_date_str,
-            similarity_score=round(sim_score * 100, 1),
-            forward_30d_return_pct=fwd_ret,
-            outcome=outcome,
-            description=desc,
-        ))
+        selected.append(
+            SimilarPeriodSchema(
+                start_date=start_date_str,
+                end_date=end_date_str,
+                similarity_score=round(similarity_score * 100, 1),
+                forward_30d_return_pct=forward_return,
+                outcome=outcome,
+                description=description,
+            )
+        )
         used_dates.append(end_date_str)
 
     return selected
+
+
+async def _generate_ai_summary(
+    *,
+    symbol: str,
+    core: AnalysisResult,
+    latest_quote: HistoricDataRow,
+    latest_indicator: IndicatorRow,
+    trend: TrendAnalysisSchema,
+    performance: PerformanceMetricsSchema,
+    indicator_signals: list[IndicatorSignalSchema],
+) -> Optional[str]:
+    api_key = settings.GEMINI_API_KEY.strip()
+    if not api_key:
+        return None
+
+    try:
+        from google import genai as google_genai
+    except Exception as exc:
+        logger.warning("Gemini client import failed for stock analysis: %s", exc)
+        return None
+
+    prompt = f"""
+Symbol: {symbol}
+Analysis date: {core.analysis_date}
+Current price: {core.current_price}
+Signal: {core.signal}
+Overall score: {core.overall_score}
+Oscillator score: {core.oscillator_score}
+Trend score: {core.trend_score}
+Volume score: {core.volume_score}
+Volatility score: {core.volatility_score}
+Daily change %: {latest_quote.diff_pct}
+Trend summary: {trend.summary}
+Support: {trend.support_level}
+Resistance: {trend.resistance_level}
+1M return: {performance.month_1_pct}
+3M return: {performance.month_3_pct}
+6M return: {performance.month_6_pct}
+Max drawdown %: {performance.max_drawdown_pct}
+Latest indicators:
+- RSI 14: {latest_indicator.rsi_14}
+- MACD hist: {latest_indicator.macd_hist}
+- ADX 14: {latest_indicator.adx_14}
+- MFI 14: {latest_indicator.mfi_14}
+- Relative volume 20: {latest_indicator.volume_ratio_20}
+- Supertrend direction: {latest_indicator.supertrend_direction}
+- Anchored VWAP: {latest_indicator.anchored_vwap}
+- Bollinger %B: {latest_indicator.bb_percent_b}
+- ROC 10: {latest_indicator.roc_10}
+- ATR 14: {latest_indicator.atr_14}
+Top technical observations:
+{chr(10).join(f"- {signal.name}: {signal.interpretation}" for signal in indicator_signals[:8])}
+
+Write 4-6 sentences in plain English. Mention the main bullish evidence, the main bearish/risk evidence,
+how price is positioned versus trend structure, and what a cautious trader should watch next.
+"""
+
+    try:
+        client = google_genai.Client(api_key=api_key)
+        response = await client.aio.models.generate_content(
+            model=settings.GEMINI_STOCK_ANALYSIS_MODEL,
+            contents=f"{_AI_SYSTEM_PROMPT}\n\n{prompt}",
+        )
+    except Exception as exc:
+        logger.warning("Gemini stock analysis failed for %s: %s", symbol, exc)
+        return None
+
+    text = (response.text or "").strip()
+    if not text:
+        return None
+    return " ".join(line.strip() for line in text.splitlines() if line.strip())
 
 
 async def get_stock_360_view(
@@ -862,56 +889,55 @@ async def get_stock_360_view(
 ) -> Optional[Stock360Schema]:
     """
     Return a comprehensive 360-degree view of a stock:
-    - Full price history for chart
-    - All indicator signals with interpretations
-    - Performance metrics (returns, volatility, drawdown)
-    - Trend analysis (MAs, support/resistance, Ichimoku)
-    - Similar historical patterns (cosine similarity on indicator fingerprints)
-    - Core signal from the existing analysis engine
+    - full price history for charting
+    - computed indicator history from TA-Lib
+    - performance, trend, and pattern analysis
+    - optional Gemini summary
     """
     try:
-        # Fetch all data in parallel
-        latest_quote, latest_ind, history, ind_history = await asyncio.gather(
-            SupabaseMarketService.get_latest_quote(symbol, as_of_date=as_of_date),
-            SupabaseMarketService.get_latest_indicators(symbol, as_of_date=as_of_date),
-            SupabaseMarketService.get_historic_data(symbol, end_date=as_of_date, limit=2000),
-            SupabaseMarketService.get_indicators(symbol, end_date=as_of_date, limit=2000),
+        latest_quote, history, indicator_history, latest_indicator = await _load_analysis_inputs(
+            symbol,
+            as_of_date=as_of_date,
+            limit=_STOCK_360_HISTORY_LIMIT,
         )
-
-        if not latest_quote or not latest_ind:
+        if not latest_quote or not latest_indicator:
             return None
 
-        ltp = latest_quote.ltp or latest_quote.close or 0.0
-
-        # Run existing signal engine
-        core = analyze_stock(symbol, latest_ind, latest_quote)
-
-        # Build extended analysis
-        indicator_signals = _build_indicator_signals(latest_ind, ltp)
+        ltp = _price(latest_quote)
+        core = analyze_stock(symbol.upper(), latest_indicator, latest_quote)
+        indicator_signals = _build_indicator_signals(latest_indicator, ltp)
         performance = _calc_performance(history)
-        trend = _build_trend_analysis(latest_ind, ltp, history)
-        similar = _find_similar_periods(history, ind_history)
+        trend = _build_trend_analysis(latest_indicator, ltp, history)
+        similar = _find_similar_periods(history, indicator_history)
+        ai_summary = await _generate_ai_summary(
+            symbol=symbol.upper(),
+            core=core,
+            latest_quote=latest_quote,
+            latest_indicator=latest_indicator,
+            trend=trend,
+            performance=performance,
+            indicator_signals=indicator_signals,
+        )
 
-        # Price history for chart (all available data)
         price_history = [
             PricePoint(
-                date=r.date or "",
-                open=r.open,
-                high=r.high,
-                low=r.low,
-                close=r.close,
-                ltp=r.ltp,
-                vol=r.vol,
-                vwap=r.vwap,
-                turnover=r.turnover,
+                date=row.date or "",
+                open=row.open,
+                high=row.high,
+                low=row.low,
+                close=row.close,
+                ltp=row.ltp,
+                vol=row.vol,
+                vwap=row.vwap,
+                turnover=row.turnover,
             )
-            for r in history
-            if r.date
+            for row in history
+            if row.date
         ]
 
         return Stock360Schema(
-            symbol=symbol,
-            analysis_date=latest_ind.date or latest_quote.date or datetime.now().strftime("%Y-%m-%d"),
+            symbol=symbol.upper(),
+            analysis_date=latest_indicator.date or latest_quote.date or datetime.now().strftime("%Y-%m-%d"),
             current_price=ltp or None,
             open_price=latest_quote.open,
             high_price=latest_quote.high,
@@ -935,10 +961,12 @@ async def get_stock_360_view(
             stop_loss=core.stop_loss,
             risk_reward_ratio=core.risk_reward_ratio,
             indicator_signals=indicator_signals,
+            indicator_history=indicator_history,
             performance=performance,
             trend_analysis=trend,
             similar_periods=similar,
             price_history=price_history,
+            ai_summary=ai_summary,
         )
     except Exception as exc:
         logger.error("get_stock_360_view(%s) error: %s", symbol, exc)

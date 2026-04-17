@@ -13,6 +13,7 @@ from sqlmodel import select, and_
 from .models import StockMetadata, ChartDrawing
 from .schemas import IndicatorRequest, IndicatorDataPoint
 from .supabase_service import SupabaseMarketService
+from .technical_analysis import compute_indicator_history, compute_latest_indicator
 
 
 class MarketService:
@@ -140,93 +141,123 @@ class MarketService:
         req: IndicatorRequest,
     ) -> list[IndicatorDataPoint]:
         """
-        Return pre-computed indicator values from Supabase indicators table.
-        Maps Supabase columns to IndicatorDataPoint fields.
+        Return computed indicator values from OHLCV history using TA-Lib defaults.
         """
-        from datetime import datetime
         start_str = req.start_date.isoformat() if req.start_date else None
         end_str = req.end_date.isoformat() if req.end_date else None
-        rows = await SupabaseMarketService.get_indicators(
-            req.symbol.upper(), start_str, end_str, limit=1000
+        history = await SupabaseMarketService.get_historic_data(
+            req.symbol.upper(), start_str, end_str, limit=2000
         )
+        rows = compute_indicator_history(history)
         if not rows:
             return []
 
         ind = req.indicator.lower()
         points: list[IndicatorDataPoint] = []
 
-        def parse_date(d: Optional[str]) -> Optional[date]:
-            if not d:
-                return None
-            try:
-                return datetime.fromisoformat(d).date()
-            except Exception:
-                try:
-                    return date.fromisoformat(d)
-                except Exception:
-                    return None
-
-        def clean(val: Optional[float]) -> Optional[float]:
-            if val is None:
-                return None
-            return round(float(val), 2)
-
         for row in rows:
-            d = parse_date(row.date)
+            d = date.fromisoformat(row.date) if row.date else None
             if not d:
                 continue
 
             if ind == "rsi":
-                points.append(IndicatorDataPoint(date=d, value=clean(row.rsi_14)))
+                points.append(IndicatorDataPoint(date=d, value=row.rsi_14))
             elif ind == "macd":
                 points.append(IndicatorDataPoint(
                     date=d,
-                    macd=clean(row.macd_line),
-                    signal=clean(row.macd_signal),
-                    histogram=clean(row.macd_hist),
+                    macd=row.macd_line,
+                    signal=row.macd_signal,
+                    histogram=row.macd_hist,
                 ))
             elif ind in ("bb", "bbands", "bollinger"):
                 points.append(IndicatorDataPoint(
                     date=d,
-                    upper=clean(row.bb_upper),
-                    lower=clean(row.bb_lower),
+                    upper=row.bb_upper,
+                    middle=row.bb_middle,
+                    lower=row.bb_lower,
                 ))
             elif ind == "ema":
                 period = req.period
-                ema_map = {9: row.ema_9, 12: row.ema_12, 26: row.ema_26, 200: row.ema_200}
-                val = ema_map.get(period, row.ema_9)
-                points.append(IndicatorDataPoint(date=d, value=clean(val)))
+                ema_map = {
+                    9: row.ema_9,
+                    12: row.ema_12,
+                    20: row.ema_20,
+                    26: row.ema_26,
+                    50: row.ema_50,
+                    100: row.ema_100,
+                    200: row.ema_200,
+                }
+                points.append(IndicatorDataPoint(date=d, value=ema_map.get(period)))
             elif ind == "sma":
                 period = req.period
-                sma_map = {5: row.sma_5, 10: row.sma_10, 20: row.sma_20, 50: row.sma_50, 200: row.sma_200}
-                val = sma_map.get(period, row.sma_20)
-                points.append(IndicatorDataPoint(date=d, value=clean(val)))
+                sma_map = {
+                    5: row.sma_5,
+                    10: row.sma_10,
+                    20: row.sma_20,
+                    50: row.sma_50,
+                    100: row.sma_100,
+                    200: row.sma_200,
+                }
+                points.append(IndicatorDataPoint(date=d, value=sma_map.get(period)))
             elif ind == "atr":
-                points.append(IndicatorDataPoint(date=d, value=clean(row.atr_14)))
+                points.append(IndicatorDataPoint(date=d, value=row.atr_14))
             elif ind == "obv":
-                points.append(IndicatorDataPoint(date=d, value=clean(row.obv)))
+                points.append(IndicatorDataPoint(date=d, value=row.obv))
             elif ind == "cci":
-                points.append(IndicatorDataPoint(date=d, value=clean(row.cci_20)))
+                points.append(IndicatorDataPoint(date=d, value=row.cci_20))
             elif ind in ("stoch", "stochastic"):
                 points.append(IndicatorDataPoint(
                     date=d,
-                    value=clean(row.stoch_k),
-                    signal=clean(row.stoch_d),
+                    value=row.stoch_k,
+                    signal=row.stoch_d,
                 ))
             elif ind == "adx":
-                points.append(IndicatorDataPoint(date=d, value=clean(row.adx_14)))
+                points.append(IndicatorDataPoint(date=d, value=row.adx_14))
             elif ind in ("williams_r", "wr", "williamsR"):
-                points.append(IndicatorDataPoint(date=d, value=clean(row.williams_r)))
+                points.append(IndicatorDataPoint(date=d, value=row.williams_r))
             elif ind == "mfi":
-                points.append(IndicatorDataPoint(date=d, value=clean(row.mfi_14)))
+                points.append(IndicatorDataPoint(date=d, value=row.mfi_14))
             elif ind == "vwap":
-                # vwap_pct available; actual VWAP value is in historicdata not indicators
-                points.append(IndicatorDataPoint(date=d, value=None))
+                points.append(IndicatorDataPoint(date=d, value=row.anchored_vwap))
+            elif ind == "roc":
+                points.append(IndicatorDataPoint(date=d, value=row.roc_10))
+            elif ind == "supertrend":
+                points.append(IndicatorDataPoint(date=d, value=row.supertrend_10_3))
+            elif ind == "volume_ratio":
+                points.append(IndicatorDataPoint(date=d, value=row.volume_ratio_20))
+            elif ind == "ichimoku":
+                points.append(IndicatorDataPoint(
+                    date=d,
+                    value=row.ichimoku_conversion,
+                    signal=row.ichimoku_base,
+                    upper=row.ichimoku_span_a,
+                    lower=row.ichimoku_span_b,
+                ))
             else:
-                # Generic fallback: return None value per date
                 points.append(IndicatorDataPoint(date=d, value=None))
 
         return points
+
+    @staticmethod
+    async def get_indicator_history(
+        symbol: str,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        limit: int = 500,
+    ) -> list:
+        history = await SupabaseMarketService.get_historic_data(
+            symbol.upper(),
+            start_date=start_date,
+            end_date=end_date,
+            limit=min(limit, 5000),
+        )
+        rows = compute_indicator_history(history)
+        return rows[-limit:] if limit > 0 else rows
+
+    @staticmethod
+    async def get_latest_indicator_snapshot(symbol: str) -> Optional[object]:
+        history = await SupabaseMarketService.get_historic_data(symbol.upper(), limit=400)
+        return compute_latest_indicator(history)
 
     # ── Chart Drawings (local DB) ────────────────────────────────────────────
 

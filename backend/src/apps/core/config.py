@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""            # Set in .env
     ANTHROPIC_API_KEY: str = ""         # Set in .env (alternative)
     GEMINI_API_KEY: str = ""            # Set in .env (alternative)
+    GEMINI_STOCK_ANALYSIS_MODEL: str = "gemini-2.5-flash"
     # NEPSE historical data CSV directory (for seed script)
     NEPSE_DATA_PATH: str = "data/nepse_ohlcv"
 
