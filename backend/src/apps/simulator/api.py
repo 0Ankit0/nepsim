@@ -52,12 +52,13 @@ async def create_simulation(
     db: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
-    """Start a new simulation with a randomly selected historical NEPSE period."""
+    """Start a new simulation from a selected or random historical NEPSE window."""
     sim = await SimulatorService.create_simulation(
         db,
         user_id=current_user.id,
         initial_capital=payload.initial_capital,
         name=payload.name,
+        start_date=payload.start_date,
     )
     return sim
 

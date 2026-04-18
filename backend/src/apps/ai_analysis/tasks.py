@@ -1,7 +1,38 @@
 """AI Analysis — Celery task for async feedback generation."""
 from __future__ import annotations
 
+import asyncio
+import threading
+
 from src.apps.core.celery_app import celery_app
+
+
+def _run_coroutine_sync(coro):
+    try:
+        return asyncio.run(coro)
+    except RuntimeError as exc:
+        if "asyncio.run() cannot be called from a running event loop" not in str(exc):
+            coro.close()
+            raise
+
+        result: dict[str, dict] = {}
+        error: dict[str, Exception] = {}
+
+        def _runner() -> None:
+            try:
+                result["value"] = asyncio.run(coro)
+            except Exception as runner_exc:  # pragma: no cover - defensive bridge
+                error["exc"] = runner_exc
+
+        thread = threading.Thread(target=_runner, daemon=True)
+        thread.start()
+        thread.join()
+        if "exc" in error:
+            raise error["exc"]
+        return result["value"]
+    except Exception:
+        coro.close()
+        raise
 
 
 @celery_app.task(bind=True, max_retries=2, default_retry_delay=30)
@@ -10,7 +41,6 @@ def generate_analysis_task(self, simulation_id: int, user_id: int) -> dict:
     Celery task: compute performance metrics and generate AI feedback.
     Runs asynchronously after the user ends a simulation.
     """
-    import asyncio
     from sqlmodel import select
     from src.db.session import async_session_factory
     from src.apps.simulator.models import Simulation, Trade, SimulationStatus
@@ -80,6 +110,6 @@ def generate_analysis_task(self, simulation_id: int, user_id: int) -> dict:
             return {"status": "completed", "analysis_id": analysis.id}
 
     try:
-        return asyncio.run(_run())
+        return _run_coroutine_sync(_run())
     except Exception as exc:
         raise self.retry(exc=exc)

@@ -14,6 +14,7 @@ from .schemas import (
     HistoryResponse, OHLCVPoint,
     IndicatorRequest, IndicatorResponse,
     ChartDrawingCreate, ChartDrawingResponse,
+    TaLibIndicatorCatalogResponse, TaLibIndicatorValueResponse,
 )
 from fastapi import UploadFile, File
 from .services import MarketService
@@ -322,6 +323,42 @@ async def get_nepse_quote(
         weeks_52_high=row.weeks_52_high,
         weeks_52_low=row.weeks_52_low,
     )
+
+
+@router.get(
+    "/nepse/indicators/catalog",
+    response_model=TaLibIndicatorCatalogResponse,
+    summary="TA-Lib indicator catalog supported by the backend",
+)
+async def get_talib_indicator_catalog(
+    _: User = Depends(get_current_user),
+):
+    rows = MarketService.get_talib_indicator_catalog()
+    return TaLibIndicatorCatalogResponse(count=len(rows), data=rows)
+
+
+@router.get(
+    "/nepse/{symbol}/talib-indicators/{indicator_name}",
+    response_model=TaLibIndicatorValueResponse,
+    summary="Latest TA-Lib indicator values for a NEPSE symbol",
+)
+async def get_talib_indicator_latest(
+    symbol: str,
+    indicator_name: str,
+    as_of_date: Optional[str] = Query(None, description="Clamp values to rows on or before YYYY-MM-DD"),
+    _: User = Depends(get_current_user),
+):
+    row = await MarketService.get_talib_indicator_latest(
+        symbol.upper(),
+        indicator_name=indicator_name,
+        as_of_date=as_of_date,
+    )
+    if not row:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No TA-Lib indicator data found for '{indicator_name.upper()}' on '{symbol.upper()}'.",
+        )
+    return row
 
 
 @router.get(

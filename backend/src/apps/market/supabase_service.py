@@ -82,11 +82,12 @@ class SupabaseMarketService:
         if not client:
             return []
         try:
+            descending_window = start_date is None
             query = (
                 client.table("historicdata")
                 .select("*")
                 .eq("symbol", symbol.upper())
-                .order("date", desc=False)
+                .order("date", desc=descending_window)
                 .limit(min(limit, _MAX_ROWS))
             )
             if start_date:
@@ -96,6 +97,8 @@ class SupabaseMarketService:
 
             result = await query.execute()
             rows = SupabaseMarketService._safe_list(result)
+            if descending_window:
+                rows.reverse()
             return [HistoricDataRow(**r) for r in rows]
         except Exception as exc:
             logger.error("get_historic_data error: %s", exc)

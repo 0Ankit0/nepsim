@@ -1,6 +1,6 @@
 import pytest
-from datetime import date, datetime, timedelta
-from unittest.mock import patch, AsyncMock
+from datetime import date
+from unittest.mock import patch
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.apps.simulator.services import SimulatorService, InsufficientFundsError, InsufficientSharesError
@@ -31,6 +31,24 @@ class TestSimulatorService:
         assert sim.cash_balance == initial_capital
         assert sim.status == SimulationStatus.ACTIVE
         assert sim.name == "Test Sim"
+
+    @patch("src.apps.simulator.services.SimulatorService._find_next_market_date")
+    @patch("src.apps.simulator.services.SimulatorService._get_market_bounds")
+    async def test_create_simulation_uses_selected_start_date(self, mock_get_bounds, mock_find_next_market_date, db_session: AsyncSession):
+        mock_get_bounds.return_value = (date(2024, 1, 1), date(2024, 12, 31))
+        mock_find_next_market_date.return_value = date(2024, 3, 18)
+
+        sim = await SimulatorService.create_simulation(
+            db_session,
+            user_id=1,
+            initial_capital=150000.0,
+            name="March Replay",
+            start_date=date(2024, 3, 16),
+        )
+
+        assert sim.period_start.date() == date(2024, 3, 18)
+        assert sim.current_sim_date.date() == date(2024, 3, 18)
+        assert sim.period_end.date() == date(2024, 5, 17)
 
     async def test_get_simulation(self, db_session: AsyncSession):
         sim = SimulationFactory(user_id=1)

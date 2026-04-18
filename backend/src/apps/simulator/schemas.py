@@ -1,5 +1,5 @@
 """Simulator app — Pydantic request/response schemas."""
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 from pydantic import BaseModel, Field
 
@@ -12,6 +12,7 @@ class SimulationCreate(BaseModel):
     initial_capital: float = Field(default=100_000.0, ge=10_000, le=10_000_000,
                                    description="Starting capital in NPR")
     name: Optional[str] = Field(default=None, max_length=100)
+    start_date: Optional[date] = Field(default=None, description="Optional historical date to start the replay from")
 
 
 class PortfolioHolding(BaseModel):
@@ -56,6 +57,9 @@ class SimulationSummary(BaseModel):
     status: SimulationStatus
     initial_capital: float
     seconds_per_day: int
+    period_start: datetime
+    period_end: datetime
+    current_sim_date: datetime
     started_at: datetime
     ended_at: Optional[datetime]
     total_pnl: Optional[float] = None

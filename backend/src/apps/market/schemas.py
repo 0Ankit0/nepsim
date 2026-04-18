@@ -102,6 +102,31 @@ class IndicatorResponse(BaseModel):
     data: list[IndicatorDataPoint]
 
 
+class TaLibIndicatorCatalogItem(BaseModel):
+    name: str
+    display_name: str
+    group: str
+    function_flags: list[str]
+    input_names: list[str]
+    output_names: list[str]
+    chart_indicator_id: Optional[str] = None
+    chart_supported: bool = False
+
+
+class TaLibIndicatorCatalogResponse(BaseModel):
+    count: int
+    data: list[TaLibIndicatorCatalogItem]
+
+
+class TaLibIndicatorValueResponse(BaseModel):
+    symbol: str
+    indicator: str
+    display_name: str
+    group: str
+    as_of_date: Optional[str] = None
+    values: dict[str, Optional[float]]
+
+
 # ─── Chart Drawings ──────────────────────────────────────────────────────────
 
 class ChartDrawingCreate(BaseModel):

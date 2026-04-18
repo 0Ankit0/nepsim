@@ -5,15 +5,37 @@ StockMetadata and ChartDrawing operations still use the local DB.
 from __future__ import annotations
 
 from datetime import date
-from typing import Optional
+from typing import Any, Optional
 
+import numpy as np
 from sqlalchemy.ext.asyncio import AsyncSession
+import talib
 from sqlmodel import select, and_
+from talib import abstract
 
 from .models import StockMetadata, ChartDrawing
-from .schemas import IndicatorRequest, IndicatorDataPoint
+from .schemas import IndicatorRequest, IndicatorDataPoint, TaLibIndicatorCatalogItem, TaLibIndicatorValueResponse
 from .supabase_service import SupabaseMarketService
 from .technical_analysis import compute_indicator_history, compute_latest_indicator
+
+
+_CHART_SUPPORTED_TALIB_INDICATORS: dict[str, str] = {
+    "ADX": "DMI",
+    "AROONOSC": "AO",
+    "BBANDS": "BOLL",
+    "CCI": "CCI",
+    "EMA": "EMA",
+    "MACD": "MACD",
+    "MOM": "MTM",
+    "OBV": "OBV",
+    "ROC": "ROC",
+    "RSI": "RSI",
+    "SAR": "SAR",
+    "SMA": "SMA",
+    "STOCH": "KDJ",
+    "TRIX": "TRIX",
+    "WILLR": "WR",
+}
 
 
 class MarketService:
@@ -258,6 +280,126 @@ class MarketService:
     async def get_latest_indicator_snapshot(symbol: str) -> Optional[object]:
         history = await SupabaseMarketService.get_historic_data(symbol.upper(), limit=400)
         return compute_latest_indicator(history)
+
+    @staticmethod
+    def get_talib_indicator_catalog() -> list[TaLibIndicatorCatalogItem]:
+        catalog: list[TaLibIndicatorCatalogItem] = []
+
+        for name in sorted(talib.get_functions()):
+            function = abstract.Function(name)
+            info = function.info
+
+            raw_input_names = info.get("input_names", {})
+            input_names: list[str] = []
+            if isinstance(raw_input_names, dict):
+                for value in raw_input_names.values():
+                    if isinstance(value, list):
+                        input_names.extend(str(item) for item in value)
+                    elif value:
+                        input_names.append(str(value))
+            elif isinstance(raw_input_names, list):
+                input_names.extend(str(item) for item in raw_input_names)
+            elif raw_input_names:
+                input_names.append(str(raw_input_names))
+
+            chart_indicator_id = _CHART_SUPPORTED_TALIB_INDICATORS.get(name)
+            catalog.append(
+                TaLibIndicatorCatalogItem(
+                    name=name,
+                    display_name=str(info.get("display_name") or name),
+                    group=str(info.get("group") or "Other"),
+                    function_flags=[str(flag) for flag in (info.get("function_flags") or [])],
+                    input_names=input_names,
+                    output_names=[str(output) for output in function.output_names],
+                    chart_indicator_id=chart_indicator_id,
+                    chart_supported=chart_indicator_id is not None,
+                )
+            )
+
+        return catalog
+
+    @staticmethod
+    def _build_talib_inputs(history: list) -> dict[str, np.ndarray]:
+        rows = [row for row in history if (row.close or row.ltp) is not None]
+
+        def _number(value: Optional[float], fallback: float = 0.0) -> float:
+            try:
+                return float(value) if value is not None else fallback
+            except (TypeError, ValueError):
+                return fallback
+
+        return {
+            "open": np.array([_number(row.open, _number(row.close, _number(row.ltp))) for row in rows], dtype=float),
+            "high": np.array([_number(row.high, _number(row.close, _number(row.ltp))) for row in rows], dtype=float),
+            "low": np.array([_number(row.low, _number(row.close, _number(row.ltp))) for row in rows], dtype=float),
+            "close": np.array([_number(row.close, _number(row.ltp)) for row in rows], dtype=float),
+            "volume": np.array([_number(row.vol) for row in rows], dtype=float),
+        }
+
+    @staticmethod
+    def _latest_talib_value(output: Any) -> Optional[float]:
+        if isinstance(output, np.ndarray):
+            values = output.tolist()
+        elif isinstance(output, list):
+            values = output
+        else:
+            values = [output]
+
+        for value in reversed(values):
+            if value is None:
+                continue
+            try:
+                number = float(value)
+            except (TypeError, ValueError):
+                continue
+            if np.isfinite(number):
+                return round(number, 4)
+        return None
+
+    @staticmethod
+    async def get_talib_indicator_latest(
+        symbol: str,
+        indicator_name: str,
+        as_of_date: Optional[str] = None,
+    ) -> Optional[TaLibIndicatorValueResponse]:
+        indicator_key = indicator_name.upper()
+        catalog = {entry.name: entry for entry in MarketService.get_talib_indicator_catalog()}
+        catalog_item = catalog.get(indicator_key)
+        if catalog_item is None:
+            return None
+
+        history = await SupabaseMarketService.get_historic_data(
+            symbol.upper(),
+            end_date=as_of_date,
+            limit=2000,
+        )
+        if not history:
+            return None
+
+        inputs = MarketService._build_talib_inputs(history)
+        if len(inputs["close"]) == 0:
+            return None
+
+        function = abstract.Function(indicator_key)
+        outputs = function(inputs)
+        output_names = list(function.output_names)
+        values: dict[str, Optional[float]] = {}
+
+        if isinstance(outputs, list):
+            for output_name, output in zip(output_names, outputs):
+                values[output_name] = MarketService._latest_talib_value(output)
+        else:
+            output_name = output_names[0] if output_names else "value"
+            values[output_name] = MarketService._latest_talib_value(outputs)
+
+        return TaLibIndicatorValueResponse(
+            symbol=symbol.upper(),
+            indicator=indicator_key,
+            display_name=catalog_item.display_name,
+            group=catalog_item.group,
+            as_of_date=history[-1].date if history else as_of_date,
+            values=values,
+        )
 
     # ── Chart Drawings (local DB) ────────────────────────────────────────────
 

@@ -57,54 +57,35 @@ class SimulatorService:
         user_id: int,
         initial_capital: float,
         name: Optional[str],
+        start_date: Optional[date] = None,
     ) -> Simulation:
         """
         Create a new simulation session.
-        Randomly selects a past 60-trading-day window from Supabase historicdata.
+        Uses a user-selected start date when provided, otherwise picks a random
+        historical window from Supabase historicdata.
         """
-        from src.db.supabase import get_supabase_client
+        min_date, max_date = await SimulatorService._get_market_bounds()
 
-        min_date: Optional[date] = None
-        max_date: Optional[date] = None
-
-        client = await get_supabase_client()
-        if client:
-            try:
-                # Get earliest date
-                min_res = await (
-                    client.table("historicdata")
-                    .select("date")
-                    .order("date", desc=False)
-                    .limit(1)
-                    .execute()
-                )
-                # Get latest date
-                max_res = await (
-                    client.table("historicdata")
-                    .select("date")
-                    .order("date", desc=True)
-                    .limit(1)
-                    .execute()
-                )
-                if min_res.data and max_res.data:
-                    min_date = date.fromisoformat(min_res.data[0]["date"])
-                    max_date = date.fromisoformat(max_res.data[0]["date"])
-            except Exception:
-                pass
-
-        if not min_date or not max_date:
-            # Fallback: use a synthetic window for development
-            min_date = date(2020, 1, 1)
-            max_date = date(2023, 12, 31)
-
-        # Pick a random 60-day window from within available data
         window_days = 60
-        range_days = (max_date - min_date).days - window_days
-        if range_days <= 0:
-            range_days = 1
-        start_offset = random.randint(0, range_days)
-        period_start = datetime.combine(min_date + timedelta(days=start_offset), datetime.min.time())
-        period_end = datetime.combine(min_date + timedelta(days=start_offset + window_days), datetime.min.time())
+        if start_date:
+            if start_date < min_date or start_date > max_date:
+                raise ValueError(
+                    f"Start date must be between {min_date.isoformat()} and {max_date.isoformat()}."
+                )
+            candidate_start = start_date
+        else:
+            range_days = (max_date - min_date).days - window_days
+            if range_days <= 0:
+                range_days = 1
+            start_offset = random.randint(0, range_days)
+            candidate_start = min_date + timedelta(days=start_offset)
+
+        resolved_start = await SimulatorService._find_next_market_date(candidate_start)
+        if resolved_start is None or resolved_start > max_date:
+            raise ValueError("No historical market data is available for the requested start date.")
+
+        period_start = datetime.combine(resolved_start, datetime.min.time())
+        period_end = datetime.combine(min(resolved_start + timedelta(days=window_days), max_date), datetime.min.time())
 
         sim = Simulation(
             user_id=user_id,
@@ -120,6 +101,65 @@ class SimulatorService:
         await db.commit()
         await db.refresh(sim)
         return sim
+
+    @staticmethod
+    async def _get_market_bounds() -> tuple[date, date]:
+        from src.db.supabase import get_supabase_client
+
+        min_date: Optional[date] = None
+        max_date: Optional[date] = None
+        client = await get_supabase_client()
+
+        if client:
+            try:
+                min_res = await (
+                    client.table("historicdata")
+                    .select("date")
+                    .order("date", desc=False)
+                    .limit(1)
+                    .execute()
+                )
+                max_res = await (
+                    client.table("historicdata")
+                    .select("date")
+                    .order("date", desc=True)
+                    .limit(1)
+                    .execute()
+                )
+                if min_res.data and max_res.data:
+                    min_date = date.fromisoformat(min_res.data[0]["date"])
+                    max_date = date.fromisoformat(max_res.data[0]["date"])
+            except Exception:
+                pass
+
+        if not min_date or not max_date:
+            return date(2020, 1, 1), date(2023, 12, 31)
+
+        return min_date, max_date
+
+    @staticmethod
+    async def _find_next_market_date(candidate_start: date) -> Optional[date]:
+        from src.db.supabase import get_supabase_client
+
+        client = await get_supabase_client()
+        if not client:
+            return candidate_start
+
+        try:
+            result = await (
+                client.table("historicdata")
+                .select("date")
+                .gte("date", candidate_start.isoformat())
+                .order("date", desc=False)
+                .limit(1)
+                .execute()
+            )
+            rows = result.data or []
+            if not rows:
+                return None
+            return date.fromisoformat(rows[0]["date"])
+        except Exception:
+            return candidate_start
 
 
     @staticmethod
