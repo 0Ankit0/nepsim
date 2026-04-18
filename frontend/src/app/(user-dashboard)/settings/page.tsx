@@ -2,15 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useAuthStore } from '@/store/auth-store';
-import { hasStoredAuthTokens } from '@/lib/api-client';
-import {
-  getLocalGeminiApiKey,
-  getOfflineGuestUser,
-  getOfflineSyncSettings,
-  setLocalGeminiApiKey,
-  updateOfflineSyncSettings,
-} from '@/lib/offline-data';
+import { useAuthSession } from '@/hooks/use-auth-session';
 import { syncApi } from '@/api/sync';
 import {
   useNotificationPreferences,
@@ -75,13 +67,11 @@ function Toggle({
 }
 
 export default function SettingsPage() {
-  const { user } = useAuthStore();
-  const isAuthenticated = hasStoredAuthTokens();
-  const effectiveUser = user ?? getOfflineGuestUser();
+  const { user: effectiveUser, isAuthenticated } = useAuthSession();
   const [activeTab, setActiveTab] = useState<TabId>('account');
   const [geminiKey, setGeminiKey] = useState('');
   const [backupGeminiKey, setBackupGeminiKey] = useState(false);
-  const [savedLocally, setSavedLocally] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
   // ── Notifications ──────────────────────────────────────────────────────
@@ -97,16 +87,19 @@ export default function SettingsPage() {
     });
   };
 
-  useEffect(() => {
-    setGeminiKey(getLocalGeminiApiKey());
-    setBackupGeminiKey(getOfflineSyncSettings().backupGeminiKeyToCloud);
-  }, []);
-
   const { data: cloudSyncSettings } = useQuery({
     queryKey: ['sync-settings'],
     queryFn: () => syncApi.getSettings(),
     enabled: isAuthenticated,
   });
+
+  useEffect(() => {
+    if (!cloudSyncSettings) {
+      return;
+    }
+
+    setBackupGeminiKey(cloudSyncSettings.backup_gemini_key_to_cloud);
+  }, [cloudSyncSettings]);
 
   const saveCloudSyncSettings = useMutation({
     mutationFn: async () => {
@@ -116,40 +109,27 @@ export default function SettingsPage() {
         gemini_api_key: backupGeminiKey && localKey ? localKey : null,
       });
     },
-    onSuccess: (data) => {
-      updateOfflineSyncSettings({
-        backupGeminiKeyToCloud: data.backup_gemini_key_to_cloud,
-        cloudGeminiKeyStored: data.cloud_gemini_key_stored,
-        lastSyncAt: data.last_synced_at,
-      });
+    onSuccess: () => {
+      setSaveStatus('Gemini sync settings saved to the backend.');
+      setGeminiKey('');
       queryClient.invalidateQueries({ queryKey: ['sync-settings'] });
     },
   });
 
   const removeCloudBackup = useMutation({
     mutationFn: () => syncApi.removeGeminiKeyBackup(),
-    onSuccess: (data) => {
-      updateOfflineSyncSettings({
-        backupGeminiKeyToCloud: data.backup_gemini_key_to_cloud,
-        cloudGeminiKeyStored: data.cloud_gemini_key_stored,
-        lastSyncAt: data.last_synced_at,
-      });
+    onSuccess: () => {
       setBackupGeminiKey(false);
+      setGeminiKey('');
+      setSaveStatus('Stored Gemini key removed from the backend.');
       queryClient.invalidateQueries({ queryKey: ['sync-settings'] });
     },
   });
 
-  const handleSaveKeyLocally = () => {
-    setLocalGeminiApiKey(geminiKey);
-    updateOfflineSyncSettings({ backupGeminiKeyToCloud: backupGeminiKey });
-    setSavedLocally(true);
-    window.setTimeout(() => setSavedLocally(false), 2500);
-  };
-
   const effectiveCloudSync = cloudSyncSettings ?? {
-    backup_gemini_key_to_cloud: getOfflineSyncSettings().backupGeminiKeyToCloud,
-    cloud_gemini_key_stored: getOfflineSyncSettings().cloudGeminiKeyStored,
-    last_synced_at: getOfflineSyncSettings().lastSyncAt,
+    backup_gemini_key_to_cloud: false,
+    cloud_gemini_key_stored: false,
+    last_synced_at: null,
   };
 
   return (
@@ -195,11 +175,9 @@ export default function SettingsPage() {
                   <div className="flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3">
                     <div>
                       <p className="text-sm font-medium text-gray-900">{effectiveUser?.email}</p>
-                      <p className="text-xs text-gray-500 mt-0.5">
-                        {isAuthenticated ? 'Your sync account email' : 'Local-only guest profile'}
-                      </p>
+                      <p className="mt-0.5 text-xs text-gray-500">Your account email</p>
                     </div>
-                    {isAuthenticated && effectiveUser?.is_confirmed ? (
+                    {effectiveUser?.is_confirmed ? (
                       <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full">
                         <CheckCircle2 className="h-3.5 w-3.5" />
                         Verified
@@ -212,7 +190,7 @@ export default function SettingsPage() {
                     )}
                   </div>
 
-                  {isAuthenticated && !effectiveUser?.is_confirmed && (
+                  {!effectiveUser?.is_confirmed && (
                     <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-3">
                       <p className="text-sm text-amber-800">
                         Your email address hasn't been verified yet. Check your inbox for the
@@ -237,13 +215,7 @@ export default function SettingsPage() {
                     </div>
                   )}
 
-                  {!isAuthenticated && (
-                    <p className="text-xs text-gray-400">
-                      You can use every local feature without logging in. Sign in only when you want to sync across devices.
-                    </p>
-                  )}
-
-                  {isAuthenticated && effectiveUser?.is_confirmed && (
+                  {effectiveUser?.is_confirmed && (
                     <p className="text-xs text-gray-400">
                       To change your email address, contact support.
                     </p>
@@ -259,27 +231,21 @@ export default function SettingsPage() {
                 <CardContent className="space-y-3">
                   {[
                     { label: 'Username', value: effectiveUser?.username },
-                    { label: 'Member since', value: isAuthenticated && (effectiveUser as any)?.created_at ? new Date((effectiveUser as any).created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : 'This device' },
-                    { label: 'Account type', value: isAuthenticated ? (effectiveUser?.is_superuser ? 'Superuser' : 'Standard') : 'Offline local profile' },
+                    { label: 'Member since', value: (effectiveUser as any)?.created_at ? new Date((effectiveUser as any).created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : '—' },
+                    { label: 'Account type', value: effectiveUser?.is_superuser ? 'Superuser' : 'Standard' },
                   ].map(({ label, value }) => (
                     <div key={label} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
                       <span className="text-sm text-gray-500">{label}</span>
                       <span className="text-sm font-medium text-gray-900">{value || '—'}</span>
                     </div>
                   ))}
-                  {isAuthenticated ? (
-                    <p className="pt-1 text-xs text-gray-400">
-                      Update your name and avatar on the{' '}
-                      <Link href="/profile" className="text-blue-600 hover:underline">
-                        Profile page
-                      </Link>
-                      .
-                    </p>
-                  ) : (
-                    <p className="pt-1 text-xs text-gray-400">
-                      Local profile information is device-only until you sign in and sync.
-                    </p>
-                  )}
+                  <p className="pt-1 text-xs text-gray-400">
+                    Update your name and avatar on the{' '}
+                    <Link href="/profile" className="text-blue-600 hover:underline">
+                      Profile page
+                    </Link>
+                    .
+                  </p>
                 </CardContent>
               </Card>
             </>
@@ -359,7 +325,7 @@ export default function SettingsPage() {
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
-                      Your Gemini key is stored on this device by default. It is not uploaded anywhere unless you explicitly enable encrypted backup below.
+                      Add or rotate the Gemini key that should be used for your account. The key is only sent to the backend when you save it here.
                     </div>
                     <div className="space-y-2">
                       <label className="text-sm font-medium text-gray-700" htmlFor="gemini-key">
@@ -374,19 +340,28 @@ export default function SettingsPage() {
                         className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
                       />
                       <p className="text-xs text-gray-500">
-                        Current status: {geminiKey.trim() ? 'stored locally on this device' : 'no key saved locally'}.
+                        {effectiveCloudSync.cloud_gemini_key_stored
+                          ? 'A Gemini key is already stored in the backend for this account.'
+                          : 'No Gemini key is currently stored in the backend.'}
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      <Button onClick={handleSaveKeyLocally}>
-                        Save locally
+                      <Button
+                        onClick={() => saveCloudSyncSettings.mutate()}
+                        disabled={saveCloudSyncSettings.isPending || !geminiKey.trim()}
+                      >
+                        {saveCloudSyncSettings.isPending ? 'Saving...' : 'Save to backend'}
                       </Button>
-                      <Button variant="outline" onClick={() => { setGeminiKey(''); setLocalGeminiApiKey(''); }}>
-                        Remove local key
+                      <Button
+                        variant="outline"
+                        onClick={() => removeCloudBackup.mutate()}
+                        disabled={removeCloudBackup.isPending || !effectiveCloudSync.cloud_gemini_key_stored}
+                      >
+                        Remove stored key
                       </Button>
                     </div>
-                    {savedLocally && (
-                      <p className="text-sm font-medium text-emerald-600">Saved locally on this device.</p>
+                    {saveStatus && (
+                      <p className="text-sm font-medium text-emerald-600">{saveStatus}</p>
                     )}
                   </CardContent>
                 </Card>
@@ -403,23 +378,17 @@ export default function SettingsPage() {
                       <div className="space-y-1">
                         <p className="text-sm font-medium text-gray-900">Back up Gemini key to the backend</p>
                         <p className="text-xs text-gray-500">
-                          Turn this on only if you want an encrypted copy of the key stored for syncing to another device.
+                          Keep backend key storage enabled if you want your AI features available across devices.
                         </p>
                       </div>
-                      <Toggle checked={backupGeminiKey} onChange={setBackupGeminiKey} disabled={!isAuthenticated} />
+                      <Toggle checked={backupGeminiKey} onChange={setBackupGeminiKey} />
                     </div>
-
-                    {!isAuthenticated && (
-                      <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-                        You are currently local-only. Sign in only when you want to sync your device data and optionally store an encrypted backup of the Gemini key.
-                      </div>
-                    )}
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                       <div className="rounded-lg border border-gray-200 p-4">
-                        <p className="text-xs uppercase tracking-wider text-gray-500">Device key</p>
+                        <p className="text-xs uppercase tracking-wider text-gray-500">Key status</p>
                         <p className="mt-2 text-sm font-semibold text-gray-900">
-                          {geminiKey.trim() ? 'Stored locally' : 'Not saved'}
+                          {geminiKey.trim() ? 'Ready to save' : effectiveCloudSync.cloud_gemini_key_stored ? 'Stored in backend' : 'Not saved'}
                         </p>
                       </div>
                       <div className="rounded-lg border border-gray-200 p-4">
@@ -436,23 +405,21 @@ export default function SettingsPage() {
                       </div>
                     </div>
 
-                    {isAuthenticated && (
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          onClick={() => saveCloudSyncSettings.mutate()}
-                          disabled={saveCloudSyncSettings.isPending}
-                        >
-                          {saveCloudSyncSettings.isPending ? 'Saving…' : 'Save sync preference'}
-                        </Button>
-                        <Button
-                          variant="outline"
-                          onClick={() => removeCloudBackup.mutate()}
-                          disabled={removeCloudBackup.isPending || !effectiveCloudSync.cloud_gemini_key_stored}
-                        >
-                          Remove cloud backup
-                        </Button>
-                      </div>
-                    )}
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        onClick={() => saveCloudSyncSettings.mutate()}
+                        disabled={saveCloudSyncSettings.isPending}
+                      >
+                        {saveCloudSyncSettings.isPending ? 'Saving...' : 'Save sync preference'}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => removeCloudBackup.mutate()}
+                        disabled={removeCloudBackup.isPending || !effectiveCloudSync.cloud_gemini_key_stored}
+                      >
+                        Remove cloud backup
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
               </div>
@@ -471,11 +438,11 @@ export default function SettingsPage() {
                   </div>
                   <div className="rounded-lg border border-gray-200 p-4 space-y-2">
                     <p className="font-medium text-gray-900">2. Generate an API key</p>
-                    <p>Create a new key for Gemini and copy it into the local key field on the left.</p>
+                    <p>Create a new key for Gemini and paste it into the account key field on the left.</p>
                   </div>
                   <div className="rounded-lg border border-gray-200 p-4 space-y-2">
-                    <p className="font-medium text-gray-900">3. Keep it local or sync it</p>
-                    <p>Leave sync disabled for device-only storage, or enable encrypted cloud backup if you want it available after signing in on another device.</p>
+                    <p className="font-medium text-gray-900">3. Save it to your account</p>
+                    <p>Save the key to the backend so Gemini-powered features work consistently anywhere you sign in.</p>
                   </div>
                   <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-4">
                     <p className="flex items-center gap-2 font-medium text-indigo-900">
@@ -483,7 +450,7 @@ export default function SettingsPage() {
                       Privacy note
                     </p>
                     <p className="mt-2 text-indigo-900/80">
-                      The app stores your Gemini key locally by default and only sends it to the backend when you explicitly opt in.
+                      The backend stores your Gemini key only when you explicitly save it from this page.
                     </p>
                   </div>
                   <div className="space-y-2">
@@ -510,7 +477,6 @@ export default function SettingsPage() {
           {/* ── Privacy tab ─────────────────────────────────────────────── */}
           {activeTab === 'privacy' && (
             <div className="space-y-5">
-              {isAuthenticated ? (
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
@@ -529,24 +495,9 @@ export default function SettingsPage() {
                       Manage sessions
                     </Button>
                   </Link>
-                </CardContent>
-              </Card>
-              ) : (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Lock className="h-5 w-5" />
-                      Privacy in offline mode
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3 text-sm text-gray-600">
-                    <p>Your watchlist, portfolio, simulator sessions, notification preferences, and Gemini key stay on this device until you choose to sync.</p>
-                    <p>When you sign in later, the app asks whether your Gemini key should remain local-only or be backed up to the backend in encrypted form.</p>
                   </CardContent>
                 </Card>
-              )}
 
-              {isAuthenticated && (
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-red-600">
@@ -569,9 +520,8 @@ export default function SettingsPage() {
                       </Button>
                     </Link>
                   </div>
-                </CardContent>
-              </Card>
-              )}
+                  </CardContent>
+                </Card>
             </div>
           )}
 

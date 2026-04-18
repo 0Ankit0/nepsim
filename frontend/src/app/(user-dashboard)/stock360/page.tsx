@@ -1,39 +1,26 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Search, TrendingUp, TrendingDown, Minus, AlertCircle, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useStock360View } from '@/hooks/useMarketAnalysis';
+import { useSymbols, useTaLibIndicatorCatalog } from '@/hooks/useMarket';
 import { useSimulation } from '@/hooks/useSimulator';
 import type { IndicatorSignal, SimilarPeriod, PricePoint } from '@/api/marketAnalysis';
-import { MarketChartCanvas } from '@/components/market-chart/chart-canvas';
-import { MarketChartToolsPanel } from '@/components/market-chart/tools-panel';
-import {
-  DEFAULT_LAYOUT_SETTINGS,
-  INDICATOR_CATALOG,
-  OVERLAY_CATALOG,
-  getIndicatorMeta,
-  upsertIndicator,
-  type ChartLayoutSettings,
-  type ChartRange,
-  type IndicatorId,
-  type IndicatorPreset,
-  type OverlayId,
-  type PriceBar,
-} from '@/components/market-chart/chart-config';
+import type { TaLibIndicatorCatalogItem } from '@/api/market';
+import { MarketChartCard } from '@/components/market-chart/chart-card';
+import type { ChartRange, PriceBar } from '@/components/market-chart/chart-config';
 import { toDateKey } from '@/components/market-chart/data-utils';
 
-// ─── Signal helpers ───────────────────────────────────────────────────────────
-
 const SIGNAL_STYLE: Record<string, { bg: string; text: string; label: string }> = {
-  STRONG_BUY:  { bg: 'bg-emerald-100', text: 'text-emerald-800', label: 'Strong Buy' },
-  BUY:         { bg: 'bg-green-100',   text: 'text-green-800',   label: 'Buy' },
-  HOLD:        { bg: 'bg-yellow-100',  text: 'text-yellow-800',  label: 'Hold' },
-  SELL:        { bg: 'bg-orange-100',  text: 'text-orange-800',  label: 'Sell' },
-  STRONG_SELL: { bg: 'bg-red-100',     text: 'text-red-800',     label: 'Strong Sell' },
+  STRONG_BUY: { bg: 'bg-emerald-100', text: 'text-emerald-800', label: 'Strong Buy' },
+  BUY: { bg: 'bg-green-100', text: 'text-green-800', label: 'Buy' },
+  HOLD: { bg: 'bg-yellow-100', text: 'text-yellow-800', label: 'Hold' },
+  SELL: { bg: 'bg-orange-100', text: 'text-orange-800', label: 'Sell' },
+  STRONG_SELL: { bg: 'bg-red-100', text: 'text-red-800', label: 'Strong Sell' },
 };
 
 const IND_SIGNAL_STYLE: Record<string, string> = {
@@ -42,8 +29,7 @@ const IND_SIGNAL_STYLE: Record<string, string> = {
   NEUTRAL: 'text-gray-500',
 };
 
-const fmt = (v?: number, dec = 2) =>
-  v !== undefined && v !== null ? v.toFixed(dec) : '—';
+const fmt = (v?: number, dec = 2) => (v !== undefined && v !== null ? v.toFixed(dec) : '—');
 
 const fmtPct = (v?: number) => {
   if (v === undefined || v === null) return '—';
@@ -57,10 +43,6 @@ const fmtVol = (v?: number) => {
   if (v >= 1_000) return `${(v / 1_000).toFixed(1)}K`;
   return v.toFixed(0);
 };
-
-// ─── Chart component ──────────────────────────────────────────────────────────
-
-const PRICE_HISTORY_RANGES: ChartRange[] = ['1D', '2D', '1W', '1M', '3M', '6M', '1Y', 'ALL'];
 
 function buildPriceHistoryBars(history: PricePoint[]): PriceBar[] {
   const uniqueRows = new Map<string, PriceBar>();
@@ -130,240 +112,162 @@ function filterPriceHistoryByRange<T extends { date: string }>(rows: T[], range:
   });
 }
 
+function useClickOutside(ref: React.RefObject<HTMLElement | null>, onOutsideClick: () => void) {
+  React.useEffect(() => {
+    const handleMouseDown = (event: MouseEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) {
+        onOutsideClick();
+      }
+    };
+
+    document.addEventListener('mousedown', handleMouseDown);
+    return () => document.removeEventListener('mousedown', handleMouseDown);
+  }, [onOutsideClick, ref]);
+}
+
 function PriceChart({
   symbol,
   history,
   selectedPeriod,
+  symbols,
+  simulationStartDate,
+  simulationDate,
+  talibCatalog,
 }: {
   symbol: string;
   history: PricePoint[];
   selectedPeriod: SimilarPeriod | null;
+  symbols?: string[];
+  simulationStartDate?: string;
+  simulationDate?: string;
+  talibCatalog?: TaLibIndicatorCatalogItem[];
 }) {
-  const [chartSettings, setChartSettings] = useState<ChartLayoutSettings>(() => ({ ...DEFAULT_LAYOUT_SETTINGS, range: '1Y' }));
-  const [pendingIndicatorId, setPendingIndicatorId] = useState<IndicatorId | ''>('');
-  const [pendingOverlayId, setPendingOverlayId] = useState<OverlayId | ''>(OVERLAY_CATALOG[0]?.id ?? '');
-  const [createOverlayNonce, setCreateOverlayNonce] = useState(0);
-  const [clearDrawingsNonce, setClearDrawingsNonce] = useState(0);
+  const [selectedRange, setSelectedRange] = useState<ChartRange>('1Y');
 
-  const priceBars = useMemo(() => buildPriceHistoryBars(history), [history]);
-  const filteredPriceBars = useMemo(() => filterPriceHistoryByRange(priceBars, chartSettings.range), [priceBars, chartSettings.range]);
-  const availableIndicators = useMemo(
-    () => INDICATOR_CATALOG.filter((candidate) => !chartSettings.indicators.some((indicator) => indicator.id === candidate.id)),
-    [chartSettings.indicators]
+  const boundedHistory = useMemo(
+    () =>
+      !simulationStartDate
+        ? history
+        : history.filter((row) => {
+            const date = toDateKey(row.date);
+            return Boolean(date && date >= simulationStartDate);
+          }),
+    [history, simulationStartDate]
   );
-
-  React.useEffect(() => {
-    if (availableIndicators.length === 0) {
-      setPendingIndicatorId('');
-      return;
-    }
-    if (pendingIndicatorId && availableIndicators.some((indicator) => indicator.id === pendingIndicatorId)) {
-      return;
-    }
-    setPendingIndicatorId(availableIndicators[0]?.id ?? '');
-  }, [availableIndicators, pendingIndicatorId]);
-
-  const applyPreset = (preset: IndicatorPreset) => {
-    if (preset === 'trend') {
-      setChartSettings((current) => ({
-        ...current,
-        indicators: [
-          { id: 'MA', visible: true },
-          { id: 'EMA', visible: true },
-          { id: 'SMA', visible: true },
-          { id: 'BBI', visible: true },
-          { id: 'BOLL', visible: true },
-          { id: 'SAR', visible: true },
-          { id: 'DMI', visible: true },
-        ],
-      }));
-      return;
-    }
-    if (preset === 'momentum') {
-      setChartSettings((current) => ({
-        ...current,
-        indicators: [
-          { id: 'RSI', visible: true },
-          { id: 'MACD', visible: true },
-          { id: 'KDJ', visible: true },
-          { id: 'ROC', visible: true },
-          { id: 'MTM', visible: true },
-          { id: 'AO', visible: true },
-        ],
-      }));
-      return;
-    }
-    setChartSettings({ ...DEFAULT_LAYOUT_SETTINGS, range: chartSettings.range });
-  };
+  const priceBars = useMemo(() => buildPriceHistoryBars(boundedHistory), [boundedHistory]);
+  const filteredPriceBars = useMemo(() => filterPriceHistoryByRange(priceBars, selectedRange), [priceBars, selectedRange]);
 
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-      <div className="xl:col-span-2">
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-wrap gap-2">
-            {(['candlestick', 'hollow', 'ohlc', 'area'] as const).map((mode) => (
-              <Button
-                key={mode}
-                type="button"
-                size="sm"
-                variant={chartSettings.chartStyle === mode ? 'primary' : 'outline'}
-                onClick={() => setChartSettings((current) => ({ ...current, chartStyle: mode }))}
-              >
-                {mode === 'candlestick' ? 'Candles' : mode === 'hollow' ? 'Hollow' : mode === 'ohlc' ? 'OHLC' : 'Area'}
-              </Button>
-            ))}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {PRICE_HISTORY_RANGES.map((nextRange) => (
-              <Button
-                key={nextRange}
-                type="button"
-                size="sm"
-                variant={chartSettings.range === nextRange ? 'primary' : 'outline'}
-                onClick={() => setChartSettings((current) => ({ ...current, range: nextRange }))}
-              >
-                {nextRange}
-              </Button>
-            ))}
-          </div>
-        </div>
-        <MarketChartCanvas
-          symbol={symbol}
-          priceBars={filteredPriceBars}
-          highlightedRange={
-            selectedPeriod
-              ? {
-                  startDate: toDateKey(selectedPeriod.start_date) ?? selectedPeriod.start_date,
-                  endDate: toDateKey(selectedPeriod.end_date) ?? selectedPeriod.end_date,
-                }
-              : null
-          }
-          pendingOverlayId={pendingOverlayId}
-          createOverlayNonce={createOverlayNonce}
-          clearDrawingsNonce={clearDrawingsNonce}
-          settings={chartSettings}
-          emptyMessage="No price history is available for this symbol yet."
-        />
-      </div>
-      <MarketChartToolsPanel
-        chartSettings={chartSettings}
-        availableIndicators={availableIndicators}
-        pendingIndicatorId={pendingIndicatorId}
-        onPendingIndicatorChange={setPendingIndicatorId}
-        onAddIndicator={() => {
-          if (!pendingIndicatorId) return;
-          getIndicatorMeta(pendingIndicatorId);
-          setChartSettings((current) => ({
-            ...current,
-            indicators: upsertIndicator(current.indicators, { id: pendingIndicatorId, visible: true }),
-          }));
-        }}
-        onApplyPreset={applyPreset}
-        onToggleIndicatorVisibility={(indicatorId) => {
-          setChartSettings((current) => ({
-            ...current,
-            indicators: current.indicators.map((indicator) => (indicator.id === indicatorId ? { ...indicator, visible: !indicator.visible } : indicator)),
-          }));
-        }}
-        onRemoveIndicator={(indicatorId) => {
-          setChartSettings((current) => ({
-            ...current,
-            indicators: current.indicators.filter((indicator) => indicator.id !== indicatorId),
-          }));
-        }}
-        onToggleVolume={() => setChartSettings((current) => ({ ...current, showVolume: !current.showVolume }))}
-        availableOverlays={OVERLAY_CATALOG}
-        pendingOverlayId={pendingOverlayId}
-        onPendingOverlayChange={setPendingOverlayId}
-        onAddOverlay={() => {
-          if (!pendingOverlayId) return;
-          setCreateOverlayNonce((current) => current + 1);
-        }}
-        onClearOverlays={() => setClearDrawingsNonce((current) => current + 1)}
+    <div className="space-y-4">
+      <MarketChartCard
+        symbol={symbol}
+        title="Pro price history workspace"
+        description="Daily-only price history with chart themes, saved layouts, and searchable TA-Lib-backed indicators."
+        badgeLabel="Stock 360 workspace"
+        selectedRange={selectedRange}
+        onRangeChange={setSelectedRange}
+        priceBars={filteredPriceBars}
+        allSymbols={symbols}
+        talibCatalog={talibCatalog}
+        indicatorAsOfDate={simulationDate}
+        highlightedRange={
+          selectedPeriod
+            ? {
+                startDate: toDateKey(selectedPeriod.start_date) ?? selectedPeriod.start_date,
+                endDate: toDateKey(selectedPeriod.end_date) ?? selectedPeriod.end_date,
+              }
+            : null
+        }
+        isHistoryLoading={false}
+        emptyMessage="No price history is available for this symbol yet."
       />
     </div>
   );
 }
 
-// ─── Score bar ────────────────────────────────────────────────────────────────
-
 function ScoreBar({ label, value, color = 'bg-blue-500' }: { label: string; value: number; color?: string }) {
   return (
     <div>
-      <div className="flex justify-between text-xs mb-1">
+      <div className="mb-1 flex justify-between text-xs">
         <span className="text-gray-600">{label}</span>
         <span className="font-semibold">{value.toFixed(0)}/100</span>
       </div>
-      <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+      <div className="h-2 overflow-hidden rounded-full bg-gray-100">
         <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${value}%` }} />
       </div>
     </div>
   );
 }
 
-// ─── Indicator card ───────────────────────────────────────────────────────────
-
 function IndicatorCard({ ind }: { ind: IndicatorSignal }) {
   const [expanded, setExpanded] = useState(false);
-  const icon = ind.signal === 'BULLISH'
-    ? <TrendingUp className="h-4 w-4 text-emerald-500" />
-    : ind.signal === 'BEARISH'
-    ? <TrendingDown className="h-4 w-4 text-red-500" />
-    : <Minus className="h-4 w-4 text-gray-400" />;
+  const icon =
+    ind.signal === 'BULLISH' ? (
+      <TrendingUp className="h-4 w-4 text-emerald-500" />
+    ) : ind.signal === 'BEARISH' ? (
+      <TrendingDown className="h-4 w-4 text-red-500" />
+    ) : (
+      <Minus className="h-4 w-4 text-gray-400" />
+    );
 
-  const border = ind.signal === 'BULLISH' ? 'border-l-emerald-400' : ind.signal === 'BEARISH' ? 'border-l-red-400' : 'border-l-gray-300';
+  const border =
+    ind.signal === 'BULLISH' ? 'border-l-emerald-400' : ind.signal === 'BEARISH' ? 'border-l-red-400' : 'border-l-gray-300';
 
   return (
-    <div className={`border-l-4 ${border} bg-white rounded-r-lg p-3 shadow-sm cursor-pointer hover:shadow-md transition-shadow`} onClick={() => setExpanded(!expanded)}>
+    <div
+      className={`cursor-pointer rounded-r-lg border-l-4 ${border} bg-white p-3 shadow-sm transition-shadow hover:shadow-md`}
+      onClick={() => setExpanded(!expanded)}
+    >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           {icon}
           <span className="text-sm font-medium text-gray-800">{ind.name}</span>
         </div>
         <div className="flex items-center gap-2">
-          {ind.value !== undefined && ind.value !== null && (
-            <span className="text-xs text-gray-500">{ind.value.toFixed(2)}</span>
-          )}
+          {ind.value !== undefined && ind.value !== null && <span className="text-xs text-gray-500">{ind.value.toFixed(2)}</span>}
           <span className={`text-xs font-semibold ${IND_SIGNAL_STYLE[ind.signal]}`}>{ind.signal}</span>
           {expanded ? <ChevronUp className="h-3 w-3 text-gray-400" /> : <ChevronDown className="h-3 w-3 text-gray-400" />}
         </div>
       </div>
-      {expanded && (
-        <p className="mt-2 text-xs text-gray-600 leading-relaxed">{ind.interpretation}</p>
-      )}
+      {expanded && <p className="mt-2 text-xs leading-relaxed text-gray-600">{ind.interpretation}</p>}
     </div>
   );
 }
 
-// ─── Similar period card ──────────────────────────────────────────────────────
-
 function SimilarPeriodCard({ period }: { period: SimilarPeriod }) {
-  const outcomeColor = period.outcome === 'BULLISH' ? 'bg-emerald-100 text-emerald-700' : period.outcome === 'BEARISH' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600';
+  const outcomeColor =
+    period.outcome === 'BULLISH'
+      ? 'bg-emerald-100 text-emerald-700'
+      : period.outcome === 'BEARISH'
+        ? 'bg-red-100 text-red-700'
+        : 'bg-gray-100 text-gray-600';
+
   return (
-    <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-100">
-      <div className="flex items-start justify-between mb-2">
+    <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-sm">
+      <div className="mb-2 flex items-start justify-between">
         <div>
-          <p className="text-xs text-gray-500">{period.start_date} → {period.end_date}</p>
-          <div className="flex items-center gap-2 mt-1">
+          <p className="text-xs text-gray-500">
+            {period.start_date} → {period.end_date}
+          </p>
+          <div className="mt-1 flex items-center gap-2">
             <span className="text-xs font-medium text-blue-600">Similarity: {period.similarity_score}%</span>
-            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${outcomeColor}`}>{period.outcome}</span>
+            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${outcomeColor}`}>{period.outcome}</span>
           </div>
         </div>
         {period.forward_30d_return_pct !== undefined && period.forward_30d_return_pct !== null && (
           <div className="text-right">
             <p className="text-xs text-gray-400">30d after</p>
             <p className={`text-sm font-bold ${period.forward_30d_return_pct >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-              {period.forward_30d_return_pct >= 0 ? '+' : ''}{period.forward_30d_return_pct.toFixed(1)}%
+              {period.forward_30d_return_pct >= 0 ? '+' : ''}
+              {period.forward_30d_return_pct.toFixed(1)}%
             </p>
           </div>
         )}
       </div>
-      <p className="text-xs text-gray-600 leading-relaxed">{period.description}</p>
+      <p className="text-xs leading-relaxed text-gray-600">{period.description}</p>
     </div>
   );
 }
-
-// ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function Stock360Page() {
   const searchParams = useSearchParams();
@@ -371,17 +275,56 @@ export default function Stock360Page() {
   const simId = searchParams.get('simId');
   const simulationId = simId ? Number.parseInt(simId, 10) : 0;
   const { data: sim } = useSimulation(simulationId || undefined);
+  const simulationStartDate = sim?.period_start?.split('T')[0] ?? undefined;
   const simulationDate = sim?.current_sim_date?.split('T')[0] ?? undefined;
+  const { data: symbols, isLoading: isSymbolsLoading } = useSymbols();
+  const { data: talibCatalog } = useTaLibIndicatorCatalog();
 
   const [inputValue, setInputValue] = useState(initialSymbol);
   const [activeSymbol, setActiveSymbol] = useState(initialSymbol);
   const [selectedPatternIndex, setSelectedPatternIndex] = useState<number>(-1);
+  const [symbolResultsOpen, setSymbolResultsOpen] = useState(false);
+  const [searchMessage, setSearchMessage] = useState<string | null>(null);
 
   const { data, isLoading, isError, refetch } = useStock360View(activeSymbol, simulationDate);
+  const searchRef = useRef<HTMLDivElement>(null);
 
-  const handleSearch = () => {
-    const sym = inputValue.trim().toUpperCase();
-    if (sym) setActiveSymbol(sym);
+  useClickOutside(searchRef, () => setSymbolResultsOpen(false));
+
+  const symbolMatches = useMemo(() => {
+    if (!symbols || inputValue.trim().length === 0) return [];
+
+    const query = inputValue.trim().toUpperCase();
+    return [...symbols]
+      .filter((candidate) => candidate.includes(query))
+      .sort((left, right) => {
+        const leftStartsWith = left.startsWith(query) ? 0 : 1;
+        const rightStartsWith = right.startsWith(query) ? 0 : 1;
+        if (leftStartsWith !== rightStartsWith) {
+          return leftStartsWith - rightStartsWith;
+        }
+        return left.localeCompare(right);
+      })
+      .slice(0, 8);
+  }, [inputValue, symbols]);
+
+  const handleSearch = (candidate?: string) => {
+    const sym = (candidate ?? inputValue).trim().toUpperCase();
+
+    if (!sym) {
+      setSearchMessage('Enter a NEPSE symbol to analyze.');
+      return;
+    }
+
+    if (symbols && !symbols.includes(sym)) {
+      setSearchMessage(`No NEPSE symbol matched "${sym}".`);
+      setSymbolResultsOpen(true);
+      return;
+    }
+
+    setSearchMessage(null);
+    setSymbolResultsOpen(false);
+    setActiveSymbol(sym);
   };
 
   const signal = data ? SIGNAL_STYLE[data.signal] ?? SIGNAL_STYLE.HOLD : null;
@@ -393,35 +336,71 @@ export default function Stock360Page() {
   }, [activeSymbol]);
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 py-6 px-4">
-      {/* Header */}
+    <div className="mx-auto max-w-6xl space-y-6 px-4 py-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Stock 360° View</h1>
-        <p className="text-sm text-gray-500 mt-1">
+        <p className="mt-1 text-sm text-gray-500">
           Enter any NEPSE symbol to get a comprehensive historic analysis, indicator breakdown, trend view, and similar patterns.
         </p>
         {simulationDate && (
           <p className="mt-2 text-xs font-medium text-amber-700">
-            Simulation guardrail active: 360 data is capped at {simulationDate}.
+            Simulation guardrail active: chart data is capped to {simulationStartDate ?? simulationDate} through {simulationDate}.
           </p>
         )}
       </div>
 
-      {/* Search */}
       <Card>
         <CardContent className="p-4">
           <div className="flex gap-3">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <div ref={searchRef} className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
               <Input
                 className="pl-9 uppercase"
                 placeholder="Enter stock symbol (e.g. NABIL, NICA, SCB...)"
                 value={inputValue}
-                onChange={e => setInputValue(e.target.value.toUpperCase())}
-                onKeyDown={e => e.key === 'Enter' && handleSearch()}
+                onFocus={() => setSymbolResultsOpen(true)}
+                onChange={(event) => {
+                  setInputValue(event.target.value.toUpperCase());
+                  setSearchMessage(null);
+                  setSymbolResultsOpen(true);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    handleSearch(symbolMatches[0] ?? inputValue);
+                  }
+                  if (event.key === 'Escape') {
+                    setSymbolResultsOpen(false);
+                  }
+                }}
               />
+              {symbolResultsOpen && inputValue.trim() && (
+                <div className="absolute z-20 mt-2 w-full overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg">
+                  {symbolMatches.length > 0 ? (
+                    <ul className="max-h-72 overflow-y-auto py-1">
+                      {symbolMatches.map((match) => (
+                        <li key={match}>
+                          <button
+                            type="button"
+                            className="flex w-full items-center justify-between px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                            onClick={() => handleSearch(match)}
+                          >
+                            <span className="font-semibold text-gray-900">{match}</span>
+                            <span className="text-xs text-gray-400">Analyze</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <div className="px-4 py-3 text-sm text-gray-500">
+                      {isSymbolsLoading ? 'Loading symbols...' : `No symbols matched "${inputValue.trim().toUpperCase()}".`}
+                    </div>
+                  )}
+                </div>
+              )}
+              {searchMessage && <p className="mt-2 text-xs font-medium text-rose-600">{searchMessage}</p>}
             </div>
-            <Button onClick={handleSearch} disabled={!inputValue.trim()}>
+            <Button onClick={() => handleSearch(symbolMatches[0] ?? inputValue)} disabled={!inputValue.trim()}>
               Analyze
             </Button>
             {activeSymbol && (
@@ -433,41 +412,35 @@ export default function Stock360Page() {
         </CardContent>
       </Card>
 
-      {/* Loading */}
       {isLoading && (
-        <div className="text-center py-16 text-gray-500">
-          <div className="animate-spin h-10 w-10 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-4" />
+        <div className="py-16 text-center text-gray-500">
+          <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
           <p>Analyzing {activeSymbol}…</p>
-          <p className="text-xs mt-1">Fetching full history, indicators, and running pattern matching</p>
+          <p className="mt-1 text-xs">Fetching full history, indicators, and running pattern matching</p>
         </div>
       )}
 
-      {/* Error */}
       {isError && !isLoading && (
         <Card>
           <CardContent className="p-8 text-center">
-            <AlertCircle className="h-10 w-10 text-red-400 mx-auto mb-3" />
-            <p className="text-gray-700 font-medium">Symbol not found or no data available</p>
-            <p className="text-sm text-gray-500 mt-1">Try checking the symbol name (e.g. NABIL, NICA, SCB)</p>
+            <AlertCircle className="mx-auto mb-3 h-10 w-10 text-red-400" />
+            <p className="font-medium text-gray-700">Symbol not found or no data available</p>
+            <p className="mt-1 text-sm text-gray-500">Try checking the symbol name (e.g. NABIL, NICA, SCB)</p>
           </CardContent>
         </Card>
       )}
 
-      {/* Empty state */}
       {!activeSymbol && !isLoading && (
-        <div className="text-center py-16 text-gray-400">
-          <Search className="h-16 w-16 mx-auto mb-4 opacity-30" />
+        <div className="py-16 text-center text-gray-400">
+          <Search className="mx-auto mb-4 h-16 w-16 opacity-30" />
           <p className="text-lg font-medium">Search for a NEPSE stock symbol</p>
-          <p className="text-sm mt-1">Get full historic analysis, technical indicators, trend breakdown, and similar historical patterns</p>
+          <p className="mt-1 text-sm">Get full historic analysis, technical indicators, trend breakdown, and similar historical patterns</p>
         </div>
       )}
 
-      {/* 360 View Content */}
       {data && !isLoading && (
         <div className="space-y-6">
-          {/* Top overview row */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Symbol header */}
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <Card className="md:col-span-2">
               <CardContent className="p-5">
                 <div className="flex items-start justify-between">
@@ -475,12 +448,12 @@ export default function Stock360Page() {
                     <div className="flex items-center gap-3">
                       <h2 className="text-3xl font-bold text-gray-900">{data.symbol}</h2>
                       {signal && (
-                        <span className={`px-3 py-1 rounded-full text-sm font-semibold ${signal.bg} ${signal.text}`}>
+                        <span className={`rounded-full px-3 py-1 text-sm font-semibold ${signal.bg} ${signal.text}`}>
                           {signal.label}
                         </span>
                       )}
                     </div>
-                    <div className="flex items-baseline gap-3 mt-2">
+                    <div className="mt-2 flex items-baseline gap-3">
                       <span className="text-2xl font-semibold text-gray-800">Rs. {fmt(data.current_price)}</span>
                       {data.change_pct !== undefined && (
                         <span className={`text-sm font-medium ${(data.change_pct ?? 0) >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
@@ -488,16 +461,16 @@ export default function Stock360Page() {
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-gray-400 mt-1">As of {data.analysis_date}</p>
+                    <p className="mt-1 text-xs text-gray-400">As of {data.analysis_date}</p>
                   </div>
-                  <div className="text-right space-y-1">
+                  <div className="space-y-1 text-right">
                     <p className="text-xs text-gray-500">Overall Score</p>
                     <p className="text-4xl font-bold text-blue-600">{data.overall_score.toFixed(0)}</p>
                     <p className="text-xs text-gray-400">/ 100</p>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-4 gap-3 mt-4 pt-4 border-t border-gray-100">
+                <div className="mt-4 grid grid-cols-4 gap-3 border-t border-gray-100 pt-4">
                   {[
                     ['Open', fmt(data.open_price)],
                     ['High', fmt(data.high_price)],
@@ -517,40 +490,58 @@ export default function Stock360Page() {
               </CardContent>
             </Card>
 
-            {/* Score breakdown */}
             <Card>
-              <CardContent className="p-5 space-y-4">
+              <CardContent className="space-y-4 p-5">
                 <h3 className="text-sm font-semibold text-gray-700">Score Breakdown</h3>
                 <ScoreBar label="Oscillator" value={data.oscillator_score} color="bg-purple-500" />
                 <ScoreBar label="Trend" value={data.trend_score} color="bg-blue-500" />
                 <ScoreBar label="Volume" value={data.volume_score} color="bg-amber-500" />
                 <ScoreBar label="Volatility" value={data.volatility_score} color="bg-rose-500" />
                 {data.entry_price && (
-                  <div className="pt-3 border-t border-gray-100 space-y-1 text-xs">
-                    <div className="flex justify-between"><span className="text-gray-500">Entry</span><span className="font-medium">Rs. {fmt(data.entry_price)}</span></div>
-                    <div className="flex justify-between"><span className="text-gray-500">Target</span><span className="font-medium text-emerald-600">Rs. {fmt(data.target_price)}</span></div>
-                    <div className="flex justify-between"><span className="text-gray-500">Stop Loss</span><span className="font-medium text-red-500">Rs. {fmt(data.stop_loss)}</span></div>
-                    <div className="flex justify-between"><span className="text-gray-500">R:R</span><span className="font-medium">{fmt(data.risk_reward_ratio)}x</span></div>
+                  <div className="space-y-1 border-t border-gray-100 pt-3 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Entry</span>
+                      <span className="font-medium">Rs. {fmt(data.entry_price)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Target</span>
+                      <span className="font-medium text-emerald-600">Rs. {fmt(data.target_price)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Stop Loss</span>
+                      <span className="font-medium text-red-500">Rs. {fmt(data.stop_loss)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">R:R</span>
+                      <span className="font-medium">{fmt(data.risk_reward_ratio)}x</span>
+                    </div>
                   </div>
                 )}
               </CardContent>
             </Card>
           </div>
 
-          {/* Price Chart */}
           <Card>
             <CardContent className="p-5">
-              <h3 className="text-sm font-semibold text-gray-700 mb-4">Price History</h3>
-               <PriceChart symbol={data.symbol} history={data.price_history} selectedPeriod={selectedSimilarPeriod} />
-             </CardContent>
-           </Card>
+              <h3 className="mb-4 text-sm font-semibold text-gray-700">Price History</h3>
+                <PriceChart
+                  symbol={data.symbol}
+                  history={data.price_history}
+                  selectedPeriod={selectedSimilarPeriod}
+                  symbols={symbols}
+                  simulationStartDate={simulationStartDate}
+                  simulationDate={simulationDate}
+                  talibCatalog={talibCatalog?.data}
+                />
+            </CardContent>
+          </Card>
 
           <Card className="border-indigo-100 bg-gradient-to-br from-indigo-50 via-white to-sky-50">
             <CardContent className="p-5">
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <h3 className="text-sm font-semibold text-gray-700">Gemini Technical Read</h3>
-                  <p className="text-xs text-gray-500 mt-1">Backend-generated commentary from the computed technical snapshot.</p>
+                  <p className="mt-1 text-xs text-gray-500">Backend-generated commentary from the computed technical snapshot.</p>
                 </div>
                 <span className="rounded-full border border-indigo-200 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-indigo-600">
                   Gemini
@@ -562,12 +553,10 @@ export default function Stock360Page() {
             </CardContent>
           </Card>
 
-          {/* Performance + Trend row */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Performance */}
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <Card>
               <CardContent className="p-5">
-                <h3 className="text-sm font-semibold text-gray-700 mb-4">Performance</h3>
+                <h3 className="mb-4 text-sm font-semibold text-gray-700">Performance</h3>
                 <table className="w-full text-sm">
                   <tbody>
                     {[
@@ -598,18 +587,23 @@ export default function Stock360Page() {
               </CardContent>
             </Card>
 
-            {/* Trend Analysis */}
             <Card>
               <CardContent className="p-5">
-                <h3 className="text-sm font-semibold text-gray-700 mb-4">Trend Analysis</h3>
+                <h3 className="mb-4 text-sm font-semibold text-gray-700">Trend Analysis</h3>
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-gray-500">Primary Trend</span>
-                    <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                      data.trend_analysis.primary_trend === 'UPTREND' ? 'bg-emerald-100 text-emerald-700' :
-                      data.trend_analysis.primary_trend === 'DOWNTREND' ? 'bg-red-100 text-red-700' :
-                      'bg-gray-100 text-gray-600'
-                    }`}>{data.trend_analysis.primary_trend}</span>
+                    <span
+                      className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                        data.trend_analysis.primary_trend === 'UPTREND'
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : data.trend_analysis.primary_trend === 'DOWNTREND'
+                            ? 'bg-red-100 text-red-700'
+                            : 'bg-gray-100 text-gray-600'
+                      }`}
+                    >
+                      {data.trend_analysis.primary_trend}
+                    </span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-gray-500">Strength</span>
@@ -617,25 +611,38 @@ export default function Stock360Page() {
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-gray-500">MA Alignment</span>
-                    <span className={`text-sm font-medium ${
-                      data.trend_analysis.ma_alignment === 'BULLISH' ? 'text-emerald-600' :
-                      data.trend_analysis.ma_alignment === 'BEARISH' ? 'text-red-500' : 'text-gray-600'
-                    }`}>{data.trend_analysis.ma_alignment}</span>
+                    <span
+                      className={`text-sm font-medium ${
+                        data.trend_analysis.ma_alignment === 'BULLISH'
+                          ? 'text-emerald-600'
+                          : data.trend_analysis.ma_alignment === 'BEARISH'
+                            ? 'text-red-500'
+                            : 'text-gray-600'
+                      }`}
+                    >
+                      {data.trend_analysis.ma_alignment}
+                    </span>
                   </div>
                   {data.trend_analysis.golden_cross && (
-                    <div className="text-xs bg-emerald-50 text-emerald-700 px-3 py-2 rounded-lg font-medium">✅ Golden Cross active (SMA50 &gt; SMA200)</div>
+                    <div className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700">
+                      Golden Cross active (SMA50 &gt; SMA200)
+                    </div>
                   )}
                   {data.trend_analysis.death_cross && (
-                    <div className="text-xs bg-red-50 text-red-700 px-3 py-2 rounded-lg font-medium">⚠️ Death Cross active (SMA50 &lt; SMA200)</div>
+                    <div className="rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+                      Death Cross active (SMA50 &lt; SMA200)
+                    </div>
                   )}
                   {data.trend_analysis.ichimoku_signal && (
                     <div className="flex justify-between">
                       <span className="text-sm text-gray-500">Ichimoku</span>
-                      <span className={`text-sm font-medium ${IND_SIGNAL_STYLE[data.trend_analysis.ichimoku_signal]}`}>{data.trend_analysis.ichimoku_signal}</span>
+                      <span className={`text-sm font-medium ${IND_SIGNAL_STYLE[data.trend_analysis.ichimoku_signal]}`}>
+                        {data.trend_analysis.ichimoku_signal}
+                      </span>
                     </div>
                   )}
-                  <div className="pt-2 border-t border-gray-100">
-                    <div className="flex justify-between text-xs mb-1">
+                  <div className="border-t border-gray-100 pt-2">
+                    <div className="mb-1 flex justify-between text-xs">
                       <span className="text-gray-400">Support</span>
                       <span className="font-medium text-emerald-600">Rs. {fmt(data.trend_analysis.support_level)}</span>
                     </div>
@@ -644,31 +651,31 @@ export default function Stock360Page() {
                       <span className="font-medium text-red-500">Rs. {fmt(data.trend_analysis.resistance_level)}</span>
                     </div>
                   </div>
-                  <p className="text-xs text-gray-500 leading-relaxed pt-2 border-t border-gray-100">{data.trend_analysis.summary}</p>
+                  <p className="border-t border-gray-100 pt-2 text-xs leading-relaxed text-gray-500">{data.trend_analysis.summary}</p>
                 </div>
               </CardContent>
             </Card>
           </div>
 
-          {/* Key Signals */}
           {data.key_signals.length > 0 && (
             <Card>
               <CardContent className="p-5">
-                <h3 className="text-sm font-semibold text-gray-700 mb-3">Key Signals</h3>
+                <h3 className="mb-3 text-sm font-semibold text-gray-700">Key Signals</h3>
                 <div className="flex flex-wrap gap-2">
                   {data.key_signals.map((sig, i) => (
-                    <span key={i} className="px-3 py-1 bg-blue-50 text-blue-700 text-xs rounded-full font-medium">{sig}</span>
+                    <span key={i} className="rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
+                      {sig}
+                    </span>
                   ))}
                 </div>
               </CardContent>
             </Card>
           )}
 
-          {/* Indicator Dashboard */}
           <Card>
             <CardContent className="p-5">
-              <h3 className="text-sm font-semibold text-gray-700 mb-4">Indicator Analysis</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <h3 className="mb-4 text-sm font-semibold text-gray-700">Indicator Analysis</h3>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 {data.indicator_signals.map((ind, i) => (
                   <IndicatorCard key={i} ind={ind} />
                 ))}
@@ -676,17 +683,18 @@ export default function Stock360Page() {
             </CardContent>
           </Card>
 
-          {/* Similar Historical Periods */}
           {data.similar_periods.length > 0 && (
             <Card>
               <CardContent className="p-5">
-                <div className="flex items-start justify-between mb-4">
+                <div className="mb-4 flex items-start justify-between">
                   <div>
                     <h3 className="text-sm font-semibold text-gray-700">Similar Historical Patterns</h3>
-                    <p className="text-xs text-gray-400 mt-0.5">Periods with similar indicator fingerprints — shows what happened next</p>
+                    <p className="mt-0.5 text-xs text-gray-400">
+                      Periods with similar indicator fingerprints — shows what happened next
+                    </p>
                   </div>
                   <div className="w-72">
-                    <label htmlFor="pattern-select" className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">
+                    <label htmlFor="pattern-select" className="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500">
                       Highlight on chart
                     </label>
                     <select
@@ -704,7 +712,7 @@ export default function Stock360Page() {
                     </select>
                   </div>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
                   {data.similar_periods.map((p, i) => (
                     <div
                       key={i}
@@ -723,26 +731,33 @@ export default function Stock360Page() {
                     </div>
                   ))}
                 </div>
-                <div className="mt-4 p-3 bg-amber-50 rounded-lg text-xs text-amber-700">
-                  ⚠️ <strong>Disclaimer:</strong> Past patterns are not guaranteed to repeat. Use this analysis as one of many inputs for your investment decisions, not as financial advice.
+                <div className="mt-4 rounded-lg bg-amber-50 p-3 text-xs text-amber-700">
+                  <strong>Disclaimer:</strong> Past patterns are not guaranteed to repeat. Use this analysis as one of many inputs for
+                  your investment decisions, not as financial advice.
                 </div>
               </CardContent>
             </Card>
           )}
 
-          {/* MA Position Table */}
           <Card>
             <CardContent className="p-5">
-              <h3 className="text-sm font-semibold text-gray-700 mb-3">Price vs Moving Averages</h3>
+              <h3 className="mb-3 text-sm font-semibold text-gray-700">Price vs Moving Averages</h3>
               <div className="grid grid-cols-3 gap-3 text-center">
                 {[
                   ['SMA 20', data.trend_analysis.price_vs_sma20],
                   ['SMA 50', data.trend_analysis.price_vs_sma50],
                   ['SMA 200', data.trend_analysis.price_vs_sma200],
                 ].map(([label, pos]) => (
-                  <div key={label as string} className={`rounded-lg p-3 ${pos === 'ABOVE' ? 'bg-emerald-50' : pos === 'BELOW' ? 'bg-red-50' : 'bg-gray-50'}`}>
+                  <div
+                    key={label as string}
+                    className={`rounded-lg p-3 ${pos === 'ABOVE' ? 'bg-emerald-50' : pos === 'BELOW' ? 'bg-red-50' : 'bg-gray-50'}`}
+                  >
                     <p className="text-xs text-gray-500">{label}</p>
-                    <p className={`text-sm font-semibold mt-1 ${pos === 'ABOVE' ? 'text-emerald-600' : pos === 'BELOW' ? 'text-red-500' : 'text-gray-400'}`}>
+                    <p
+                      className={`mt-1 text-sm font-semibold ${
+                        pos === 'ABOVE' ? 'text-emerald-600' : pos === 'BELOW' ? 'text-red-500' : 'text-gray-400'
+                      }`}
+                    >
                       {pos ?? '—'}
                     </p>
                   </div>

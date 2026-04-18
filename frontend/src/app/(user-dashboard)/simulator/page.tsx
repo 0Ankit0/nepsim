@@ -13,6 +13,7 @@ import Link from 'next/link';
 
 export default function SimulatorPage() {
   const [initialCapital, setInitialCapital] = useState('1000000');
+  const [startDate, setStartDate] = useState('');
   const { data: simulations, isLoading } = useSimulations();
   
   const createSimulation = useCreateSimulation();
@@ -23,7 +24,11 @@ export default function SimulatorPage() {
   const handleStart = () => {
     const capital = parseInt(initialCapital);
     if (isNaN(capital) || capital < 10000) return;
-    createSimulation.mutate({ capital, name: `Sim - ${new Date().toLocaleDateString()}` });
+    createSimulation.mutate({
+      capital,
+      name: `Sim - ${new Date().toLocaleDateString()}`,
+      startDate: startDate || undefined,
+    });
   };
 
   return (
@@ -59,6 +64,12 @@ export default function SimulatorPage() {
                 />
               </div>
               <p className="text-[10px] text-gray-500">Minimum recommended: Rs. 100,000</p>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">Simulation Start Date</label>
+              <Input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} />
+              <p className="text-[10px] text-gray-500">Pick a historical date to start from, or leave it blank to use a random market window.</p>
             </div>
             
             <Button 
@@ -115,10 +126,13 @@ export default function SimulatorPage() {
                                             </p>
                                         </div>
                                         <div className="text-center flex-1">
-                                            <p className="text-[10px] text-gray-500 uppercase">Started</p>
-                                            <p className="text-xs font-bold text-gray-900">{new Date(sim.started_at).toLocaleDateString()}</p>
+                                            <p className="text-[10px] text-gray-500 uppercase">Sim Date</p>
+                                            <p className="text-xs font-bold text-gray-900">{new Date(sim.current_sim_date).toLocaleDateString()}</p>
                                         </div>
                                     </div>
+                                    <p className="text-[11px] text-gray-500">
+                                        Window start: {new Date(sim.period_start).toLocaleDateString()}
+                                    </p>
                                     <Link href={`/simulator/${sim.id}`}>
                                         <Button className="w-full bg-gray-900 hover:bg-black text-white gap-2">
                                             Continue <ArrowRight className="h-4 w-4" />

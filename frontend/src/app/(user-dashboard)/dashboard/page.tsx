@@ -2,9 +2,7 @@
 
 'use client';
 
-import { useAuthStore } from '@/store/auth-store';
-import { hasStoredAuthTokens } from '@/lib/api-client';
-import { getOfflineGuestUser, getOfflineSyncSettings } from '@/lib/offline-data';
+import { useAuthSession } from '@/hooks/use-auth-session';
 import { useNotifications } from '@/hooks/use-notifications';
 import { useTokens } from '@/hooks/use-tokens';
 import { useSimulations } from '@/hooks/useSimulator';
@@ -19,10 +17,8 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 
 export default function DashboardPage() {
-  const { user } = useAuthStore();
-  const isAuthenticated = hasStoredAuthTokens();
-  const effectiveUser = user ?? getOfflineGuestUser();
-  const syncSettings = getOfflineSyncSettings();
+  const { user, isAuthenticated } = useAuthSession();
+  const effectiveUser = user;
   const { data: notifData, isLoading: loadingNotifs } = useNotifications({ limit: 5 });
   const { data: tokenData } = useTokens({ limit: 1 }, { enabled: isAuthenticated });
   const { data: simulations } = useSimulations();
@@ -37,22 +33,22 @@ export default function DashboardPage() {
       name: 'Unread Notifications',
       value: String(unreadCount),
       icon: Bell,
-      href: isAuthenticated ? '/notifications' : '/settings',
+      href: '/notifications',
       color: 'text-blue-600 bg-blue-50',
     },
     {
-      name: isAuthenticated ? 'Active Sessions' : 'Sync Status',
-      value: isAuthenticated ? String(activeSessions) : syncSettings.lastSyncAt ? 'Synced' : 'Local only',
+      name: 'Active Sessions',
+      value: String(activeSessions),
       icon: Key,
-      href: isAuthenticated ? '/tokens' : '/settings',
+      href: '/tokens',
       color: 'text-purple-600 bg-purple-50',
     },
     {
-      name: isAuthenticated ? '2FA Status' : 'Mode',
-      value: isAuthenticated ? (effectiveUser?.otp_enabled ? 'Enabled' : 'Disabled') : 'Offline',
+      name: '2FA Status',
+      value: effectiveUser?.otp_enabled ? 'Enabled' : 'Disabled',
       icon: Shield,
-      href: isAuthenticated ? '/profile' : '/settings',
-      color: isAuthenticated && effectiveUser?.otp_enabled ? 'text-green-600 bg-green-50' : 'text-yellow-600 bg-yellow-50',
+      href: '/profile',
+      color: effectiveUser?.otp_enabled ? 'text-green-600 bg-green-50' : 'text-yellow-600 bg-yellow-50',
     },
   ];
 
@@ -61,9 +57,7 @@ export default function DashboardPage() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
         <p className="text-gray-500">
-          {isAuthenticated
-            ? `Welcome back${effectiveUser?.first_name ? `, ${effectiveUser.first_name}` : effectiveUser?.username ? `, ${effectiveUser.username}` : ''}!`
-            : 'Your offline workspace is ready. Everything stays on this device until you choose to sync.'}
+          {`Welcome back${effectiveUser?.first_name ? `, ${effectiveUser.first_name}` : effectiveUser?.username ? `, ${effectiveUser.username}` : ''}!`}
         </p>
       </div>
 
