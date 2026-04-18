@@ -65,4 +65,3 @@ export interface AIAnalysis {
   overall_skill_rating: number;
   generated_at: string;
 }
-

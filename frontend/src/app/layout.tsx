@@ -5,7 +5,7 @@ import { Providers } from '@/components/providers';
 
 export const metadata: Metadata = {
   title: 'NEPSIM',
-  description: 'Offline-first NEPSE market simulator and learning platform',
+  description: 'NEPSE market simulator and learning platform powered by backend-backed accounts and charting tools',
 };
 
 export default function RootLayout({

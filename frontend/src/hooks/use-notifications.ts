@@ -2,14 +2,6 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
-import { hasStoredAuthTokens } from '@/lib/api-client';
-import {
-  getOfflineNotifications,
-  getOfflineNotificationPreferences,
-  markAllOfflineNotificationsRead,
-  markOfflineNotificationRead,
-  updateOfflineNotificationPreferences,
-} from '@/lib/offline-data';
 import type {
   Notification,
   NotificationList,
@@ -18,14 +10,9 @@ import type {
 } from '@/types';
 
 export function useNotifications(params?: { unread_only?: boolean; skip?: number; limit?: number }) {
-  const isAuthenticated = hasStoredAuthTokens();
   return useQuery({
     queryKey: ['notifications', params],
     queryFn: async () => {
-      if (!isAuthenticated) {
-        return getOfflineNotifications(params);
-      }
-
       const response = await apiClient.get<NotificationList>('/notifications/', { params });
       return response.data;
     },
@@ -45,13 +32,8 @@ export function useGetNotification(id: number) {
 
 export function useMarkNotificationRead() {
   const queryClient = useQueryClient();
-  const isAuthenticated = hasStoredAuthTokens();
   return useMutation({
     mutationFn: async (id: number) => {
-      if (!isAuthenticated) {
-        return markOfflineNotificationRead(id);
-      }
-
       const response = await apiClient.patch<Notification>(`/notifications/${id}/read/`);
       return response.data;
     },
@@ -63,13 +45,8 @@ export function useMarkNotificationRead() {
 
 export function useMarkAllNotificationsRead() {
   const queryClient = useQueryClient();
-  const isAuthenticated = hasStoredAuthTokens();
   return useMutation({
     mutationFn: async () => {
-      if (!isAuthenticated) {
-        return markAllOfflineNotificationsRead();
-      }
-
       const response = await apiClient.patch('/notifications/read-all/');
       return response.data;
     },
@@ -113,14 +90,9 @@ export function useCreateNotification() {
 // ── Notification Preferences ────────────────────────────────────────────────
 
 export function useNotificationPreferences() {
-  const isAuthenticated = hasStoredAuthTokens();
   return useQuery({
     queryKey: ['notification-preferences'],
     queryFn: async () => {
-      if (!isAuthenticated) {
-        return getOfflineNotificationPreferences();
-      }
-
       const response = await apiClient.get<NotificationPreference>(
         '/notifications/preferences/'
       );
@@ -131,13 +103,8 @@ export function useNotificationPreferences() {
 
 export function useUpdateNotificationPreferences() {
   const queryClient = useQueryClient();
-  const isAuthenticated = hasStoredAuthTokens();
   return useMutation({
     mutationFn: async (data: NotificationPreferenceUpdate) => {
-      if (!isAuthenticated) {
-        return updateOfflineNotificationPreferences(data);
-      }
-
       const response = await apiClient.patch<NotificationPreference>(
         '/notifications/preferences/',
         data

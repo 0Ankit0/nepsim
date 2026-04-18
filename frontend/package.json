@@ -15,9 +15,10 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
+    "@klinecharts/pro": "^0.1.1",
     "@tanstack/react-query": "^5.90.20",
     "axios": "^1.13.4",
-    "klinecharts": "^10.0.0-beta1",
+    "klinecharts": "^9.8.6",
     "lucide-react": "^0.563.0",
     "next": "16.1.6",
     "posthog-js": "^1.357.1",

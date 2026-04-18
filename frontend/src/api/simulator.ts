@@ -40,6 +40,9 @@ export interface SimulationSummary {
   status: SimulationStatus;
   initial_capital: number;
   seconds_per_day: number;
+  period_start: string;
+  period_end: string;
+  current_sim_date: string;
   started_at: string;
   ended_at: string | null;
   total_pnl: number | null;
@@ -136,8 +139,11 @@ export interface AIAnalysisResponse {
 
 export const simulatorApi = {
   // Create a new simulation session
-  createSimulation: async (initial_capital: number, name?: string): Promise<SimulationResponse> => {
-    const { data } = await apiClient.post('/simulations/', { initial_capital, name });
+  createSimulation: async (initial_capital: number, name?: string, start_date?: string): Promise<SimulationResponse> => {
+    const payload: Record<string, string | number> = { initial_capital };
+    if (name) payload.name = name;
+    if (start_date) payload.start_date = start_date;
+    const { data } = await apiClient.post('/simulations/', payload);
     return data;
   },
 

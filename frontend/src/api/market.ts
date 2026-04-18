@@ -185,6 +185,31 @@ export interface AllLatestQuotesResponse {
   data: HistoricDataRow[];
 }
 
+export interface TaLibIndicatorCatalogItem {
+  name: string;
+  display_name: string;
+  group: string;
+  function_flags: string[];
+  input_names: string[];
+  output_names: string[];
+  chart_indicator_id?: string | null;
+  chart_supported: boolean;
+}
+
+export interface TaLibIndicatorCatalogResponse {
+  count: number;
+  data: TaLibIndicatorCatalogItem[];
+}
+
+export interface TaLibIndicatorValueResponse {
+  symbol: string;
+  indicator: string;
+  display_name: string;
+  group: string;
+  as_of_date?: string | null;
+  values: Record<string, number | null>;
+}
+
 export const marketApi = {
   // Get all symbols
   getSymbols: async (): Promise<string[]> => {
@@ -227,6 +252,17 @@ export const marketApi = {
   // Get latest indicators
   getLatestIndicators: async (symbol: string): Promise<IndicatorRow> => {
     const { data } = await apiClient.get(`/market/nepse/${symbol}/indicators/latest`);
+    return data;
+  },
+
+  getTaLibIndicatorCatalog: async (): Promise<TaLibIndicatorCatalogResponse> => {
+    const { data } = await apiClient.get('/market/nepse/indicators/catalog');
+    return data;
+  },
+
+  getTaLibIndicatorLatest: async (symbol: string, indicatorName: string, asOfDate?: string): Promise<TaLibIndicatorValueResponse> => {
+    const params = asOfDate ? { as_of_date: asOfDate } : undefined;
+    const { data } = await apiClient.get(`/market/nepse/${symbol}/talib-indicators/${indicatorName}`, { params });
     return data;
   },
 

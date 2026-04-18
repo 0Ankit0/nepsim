@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuthStore } from '@/store/auth-store';
 import { Button } from '@/components/ui/button';
-import { ShoppingCart, Shield, Zap, Users, Cloud, HardDrive } from 'lucide-react';
+import { ShoppingCart, Shield, Zap, Users, Cloud, LineChart } from 'lucide-react';
 
 const features = [
   {
@@ -29,14 +29,14 @@ const features = [
     description: 'Support for organizations and teams with role-based access.',
   },
   {
-    icon: HardDrive,
-    title: 'Offline First',
-    description: 'Use the simulator, portfolio, watchlist, and Gemini key locally before you ever sign in.',
+    icon: LineChart,
+    title: 'Pro Chart Workspace',
+    description: 'Trade and analyze with a richer charting experience, drawing tools, and built-in indicator controls.',
   },
   {
     icon: Cloud,
-    title: 'Sync When Ready',
-    description: 'Sign in later to sync your device data and optionally save an encrypted Gemini key backup.',
+    title: 'Backend Powered',
+    description: 'Authentication, simulator sessions, watchlists, notifications, and AI settings all stay connected to your account.',
   },
 ];
 
@@ -57,14 +57,11 @@ export default function Home() {
           <div className="flex items-center justify-between h-16">
             <div className="text-xl font-bold text-blue-600">NEPSIM</div>
             <div className="flex items-center gap-4">
-              <Link href="/dashboard">
-                <Button variant="ghost">Continue offline</Button>
-              </Link>
               <Link href="/login">
-                <Button variant="ghost">Sync</Button>
+                <Button variant="ghost">Log in</Button>
               </Link>
               <Link href="/signup">
-                <Button>Sign up to sync</Button>
+                <Button>Create account</Button>
               </Link>
             </div>
           </div>
@@ -75,21 +72,21 @@ export default function Home() {
         <section className="py-20 px-4 sm:px-6 lg:px-8">
           <div className="max-w-4xl mx-auto text-center">
             <h1 className="text-4xl sm:text-5xl font-bold text-gray-900 mb-6">
-              NEPSIM works offline first
+              NEPSIM for connected market simulation
             </h1>
             <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
-              Use the simulator, portfolio, watchlist, and Gemini features without logging in.
-              Sign in only when you want to sync your device data across devices.
+              Practice Nepal stock market trading with backend-powered portfolios, simulator sessions,
+              watchlists, AI workflows, and a cleaner pro-style charting workspace.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Link href="/dashboard">
+              <Link href="/signup">
                 <Button size="lg" className="w-full sm:w-auto">
-                  Continue Offline
+                  Create Account
                 </Button>
               </Link>
-              <Link href="/signup">
+              <Link href="/login">
                 <Button variant="outline" size="lg" className="w-full sm:w-auto">
-                  Create Sync Account
+                  Log In
                 </Button>
               </Link>
             </div>
@@ -122,10 +119,10 @@ export default function Home() {
           <div className="max-w-3xl mx-auto text-center">
             <h2 className="text-3xl font-bold text-gray-900 mb-4">Ready to Get Started?</h2>
             <p className="text-lg text-gray-600 mb-8">
-              Start locally now, then sign in later whenever you want to sync securely.
+              Sign in to start a simulator session, manage your account data, and use the full chart workspace.
             </p>
             <Link href="/signup">
-              <Button size="lg">Create Sync Account</Button>
+              <Button size="lg">Create Account</Button>
             </Link>
           </div>
         </section>

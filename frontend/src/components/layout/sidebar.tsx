@@ -2,7 +2,6 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { hasStoredAuthTokens } from '@/lib/api-client';
 import {
   Home,
   Bell,
@@ -41,8 +40,7 @@ const accountNavigation = [
 
 export function Sidebar() {
   const pathname = usePathname();
-  const isAuthenticated = hasStoredAuthTokens();
-  const navigation = isAuthenticated ? [...coreNavigation, ...accountNavigation] : coreNavigation;
+  const navigation = [...coreNavigation, ...accountNavigation];
 
   return (
     <aside className="fixed inset-y-0 left-0 z-10 w-64 bg-white border-r border-gray-200">

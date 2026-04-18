@@ -51,6 +51,22 @@ export const useNepseLatestIndicators = (symbol: string) => {
   });
 };
 
+export const useTaLibIndicatorCatalog = () => {
+  return useQuery({
+    queryKey: ['market', 'talib-indicators', 'catalog'],
+    queryFn: () => marketApi.getTaLibIndicatorCatalog(),
+    staleTime: 24 * 60 * 60 * 1000,
+  });
+};
+
+export const useTaLibIndicatorLatest = (symbol: string, indicatorName?: string, asOfDate?: string) => {
+  return useQuery({
+    queryKey: ['market', 'talib-indicators', symbol, indicatorName, asOfDate],
+    queryFn: () => marketApi.getTaLibIndicatorLatest(symbol, indicatorName!, asOfDate),
+    enabled: !!symbol && !!indicatorName,
+  });
+};
+
 export const useNepseLatestIndices = () => {
   return useQuery({
     queryKey: ['market', 'indices', 'latest'],

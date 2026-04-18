@@ -1,37 +1,24 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { watchlistApi, WatchlistItemCreate, WatchlistItemUpdate } from '@/api/watchlist';
-import { hasStoredAuthTokens } from '@/lib/api-client';
-import {
-  addOfflineWatchlistItem,
-  checkOfflineWatchlistSignals,
-  getOfflineWatchlistAlerts,
-  getOfflineWatchlistItems,
-  markOfflineWatchlistAlertRead,
-  removeOfflineWatchlistItem,
-} from '@/lib/offline-data';
 
 export const useWatchlistItems = () => {
-  const isAuthenticated = hasStoredAuthTokens();
   return useQuery({
     queryKey: ['watchlist'],
-    queryFn: () => (isAuthenticated ? watchlistApi.getItems() : Promise.resolve(getOfflineWatchlistItems())),
+    queryFn: () => watchlistApi.getItems(),
   });
 };
 
 export const useWatchlistAlerts = () => {
-  const isAuthenticated = hasStoredAuthTokens();
   return useQuery({
     queryKey: ['watchlist', 'alerts'],
-    queryFn: () => (isAuthenticated ? watchlistApi.getAlerts() : Promise.resolve(getOfflineWatchlistAlerts())),
+    queryFn: () => watchlistApi.getAlerts(),
   });
 };
 
 export const useAddWatchlistItem = () => {
   const queryClient = useQueryClient();
-  const isAuthenticated = hasStoredAuthTokens();
   return useMutation({
-    mutationFn: (payload: WatchlistItemCreate) =>
-      isAuthenticated ? watchlistApi.addItem(payload) : Promise.resolve(addOfflineWatchlistItem(payload)),
+    mutationFn: (payload: WatchlistItemCreate) => watchlistApi.addItem(payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['watchlist'] });
     },
@@ -51,10 +38,8 @@ export const useUpdateWatchlistItem = () => {
 
 export const useRemoveWatchlistItem = () => {
   const queryClient = useQueryClient();
-  const isAuthenticated = hasStoredAuthTokens();
   return useMutation({
-    mutationFn: (id: number) =>
-      isAuthenticated ? watchlistApi.removeItem(id) : Promise.resolve(removeOfflineWatchlistItem(id)),
+    mutationFn: (id: number) => watchlistApi.removeItem(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['watchlist'] });
     },
@@ -63,10 +48,8 @@ export const useRemoveWatchlistItem = () => {
 
 export const useCheckWatchlistSignals = () => {
   const queryClient = useQueryClient();
-  const isAuthenticated = hasStoredAuthTokens();
   return useMutation({
-    mutationFn: () =>
-      isAuthenticated ? watchlistApi.checkSignals() : Promise.resolve(checkOfflineWatchlistSignals()),
+    mutationFn: () => watchlistApi.checkSignals(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['watchlist', 'alerts'] });
     },
@@ -75,10 +58,8 @@ export const useCheckWatchlistSignals = () => {
 
 export const useMarkWatchlistAlertRead = () => {
   const queryClient = useQueryClient();
-  const isAuthenticated = hasStoredAuthTokens();
   return useMutation({
-    mutationFn: (id: number) =>
-      isAuthenticated ? watchlistApi.markAlertRead(id) : Promise.resolve(markOfflineWatchlistAlertRead(id)),
+    mutationFn: (id: number) => watchlistApi.markAlertRead(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['watchlist', 'alerts'] });
     },

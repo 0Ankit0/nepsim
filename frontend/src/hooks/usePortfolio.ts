@@ -1,37 +1,24 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { portfolioApi, PortfolioItemCreate, PortfolioItemUpdate } from '@/api/portfolio';
-import { hasStoredAuthTokens } from '@/lib/api-client';
-import {
-  addOfflinePortfolioItem,
-  analyzeOfflinePortfolio,
-  getOfflinePortfolioAlerts,
-  getOfflinePortfolioItems,
-  markOfflinePortfolioAlertRead,
-  removeOfflinePortfolioItem,
-} from '@/lib/offline-data';
 
 export const usePortfolioItems = () => {
-  const isAuthenticated = hasStoredAuthTokens();
   return useQuery({
     queryKey: ['portfolio'],
-    queryFn: () => (isAuthenticated ? portfolioApi.getItems() : Promise.resolve(getOfflinePortfolioItems())),
+    queryFn: () => portfolioApi.getItems(),
   });
 };
 
 export const usePortfolioAlerts = () => {
-  const isAuthenticated = hasStoredAuthTokens();
   return useQuery({
     queryKey: ['portfolio', 'alerts'],
-    queryFn: () => (isAuthenticated ? portfolioApi.getAlerts() : Promise.resolve(getOfflinePortfolioAlerts())),
+    queryFn: () => portfolioApi.getAlerts(),
   });
 };
 
 export const useAddPortfolioItem = () => {
   const queryClient = useQueryClient();
-  const isAuthenticated = hasStoredAuthTokens();
   return useMutation({
-    mutationFn: (payload: PortfolioItemCreate) =>
-      isAuthenticated ? portfolioApi.addItem(payload) : Promise.resolve(addOfflinePortfolioItem(payload)),
+    mutationFn: (payload: PortfolioItemCreate) => portfolioApi.addItem(payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['portfolio'] });
     },
@@ -51,10 +38,8 @@ export const useUpdatePortfolioItem = () => {
 
 export const useRemovePortfolioItem = () => {
   const queryClient = useQueryClient();
-  const isAuthenticated = hasStoredAuthTokens();
   return useMutation({
-    mutationFn: (id: number) =>
-      isAuthenticated ? portfolioApi.removeItem(id) : Promise.resolve(removeOfflinePortfolioItem(id)),
+    mutationFn: (id: number) => portfolioApi.removeItem(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['portfolio'] });
     },
@@ -63,10 +48,8 @@ export const useRemovePortfolioItem = () => {
 
 export const useAnalyzeAllPortfolio = () => {
   const queryClient = useQueryClient();
-  const isAuthenticated = hasStoredAuthTokens();
   return useMutation({
-    mutationFn: () =>
-      isAuthenticated ? portfolioApi.analyzeAll() : Promise.resolve(analyzeOfflinePortfolio()),
+    mutationFn: () => portfolioApi.analyzeAll(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['portfolio', 'alerts'] });
     },
@@ -75,10 +58,8 @@ export const useAnalyzeAllPortfolio = () => {
 
 export const useMarkPortfolioAlertRead = () => {
   const queryClient = useQueryClient();
-  const isAuthenticated = hasStoredAuthTokens();
   return useMutation({
-    mutationFn: (id: number) =>
-      isAuthenticated ? portfolioApi.markAlertRead(id) : Promise.resolve(markOfflinePortfolioAlertRead(id)),
+    mutationFn: (id: number) => portfolioApi.markAlertRead(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['portfolio', 'alerts'] });
     },

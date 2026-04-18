@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "@klinecharts/pro/dist/klinecharts-pro.css";
 
 :root {
   --background: #ffffff;

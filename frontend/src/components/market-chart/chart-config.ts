@@ -1,4 +1,5 @@
 export type ChartStyle = 'candlestick' | 'hollow' | 'ohlc' | 'area';
+export type ChartTheme = 'dark' | 'light';
 export type ChartRange = '1D' | '2D' | '1W' | '1M' | '3M' | '6M' | '1Y' | 'ALL';
 export type IndicatorId =
   | 'AVP'
@@ -69,6 +70,7 @@ export interface ActiveIndicator {
 
 export interface ChartLayoutSettings {
   chartStyle: ChartStyle;
+  theme: ChartTheme;
   range: ChartRange;
   showVolume: boolean;
   indicators: ActiveIndicator[];
@@ -149,6 +151,7 @@ export const OVERLAY_CATALOG: OverlayCatalogEntry[] = [
 
 export const DEFAULT_LAYOUT_SETTINGS: ChartLayoutSettings = {
   chartStyle: 'candlestick',
+  theme: 'dark',
   range: '1Y',
   showVolume: true,
   indicators: [
@@ -214,10 +217,12 @@ export function normalizeLayoutSettings(input: unknown): ChartLayoutSettings {
     input.chartStyle === 'hollow' || input.chartStyle === 'ohlc' || input.chartStyle === 'area'
       ? input.chartStyle
       : DEFAULT_LAYOUT_SETTINGS.chartStyle;
+  const theme = input.theme === 'light' ? 'light' : DEFAULT_LAYOUT_SETTINGS.theme;
   const range = RANGE_OPTIONS.includes(input.range as ChartRange) ? (input.range as ChartRange) : DEFAULT_LAYOUT_SETTINGS.range;
 
   return {
     chartStyle,
+    theme,
     range,
     showVolume: typeof input.showVolume === 'boolean' ? input.showVolume : DEFAULT_LAYOUT_SETTINGS.showVolume,
     indicators: normalizeActiveIndicators(input.indicators),
@@ -265,4 +270,41 @@ export function upsertIndicator(indicators: ActiveIndicator[], nextIndicator: Ac
 
 export function createLayoutNotice(tone: LayoutTone, message: string): LayoutNotice {
   return { tone, message };
+}
+
+function canUseLocalStorage() {
+  return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
+}
+
+export function readStoredLayouts(): SavedChartLayout[] {
+  if (!canUseLocalStorage()) {
+    return [];
+  }
+
+  try {
+    const raw = window.localStorage.getItem(LAYOUT_STORAGE_KEY);
+    if (!raw) {
+      return [];
+    }
+
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed
+      .map((item) => normalizeStoredLayout(item))
+      .filter((item): item is SavedChartLayout => item !== null)
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  } catch {
+    return [];
+  }
+}
+
+export function writeStoredLayouts(layouts: SavedChartLayout[]) {
+  if (!canUseLocalStorage()) {
+    return;
+  }
+
+  window.localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(layouts));
 }
