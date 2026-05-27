@@ -1,9 +1,8 @@
-import type { Metadata } from 'next';
 import type { CSSProperties } from 'react';
 import './globals.css';
 import { Providers } from '@/components/providers';
 
-export const metadata: Metadata = {
+export const metadata = {
   title: 'NEPSIM',
   description: 'NEPSE market simulator and learning platform powered by backend-backed accounts and charting tools',
 };

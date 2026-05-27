@@ -8,10 +8,12 @@ import {
   ArrowLeft, BarChart3, Zap, MessageSquare
 } from 'lucide-react';
 import Link from 'next/link';
+import { useParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
 
-export default function AIAnalysisPage({ params }: { params: { id: string } }) {
-  const id = parseInt(params.id);
+export default function AIAnalysisPage() {
+    const { id: rawId } = useParams();
+    const id = parseInt(rawId ?? '0', 10);
   const { data: analysis, isLoading, error } = useSimulationAnalysis(id);
   const { data: sim } = useSimulation(id);
   

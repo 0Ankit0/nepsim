@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useParams } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { ArrowLeft, ArrowRight, Check, Trophy, X } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -21,8 +22,9 @@ const parseOptions = (options: string[] | string): string[] => {
   }
 };
 
-export default function LessonDetailPage({ params }: { params: { id: string } }) {
-  const lessonId = Number.parseInt(params.id, 10);
+export default function LessonDetailPage() {
+  const { id: lessonIdParam } = useParams();
+  const lessonId = Number.parseInt(lessonIdParam ?? '0', 10);
   const { data: lesson, isLoading } = useLessonDetail(lessonId);
   const submitQuiz = useSubmitQuiz();
   const [mode, setMode] = useState<'reading' | 'quiz' | 'result'>('reading');

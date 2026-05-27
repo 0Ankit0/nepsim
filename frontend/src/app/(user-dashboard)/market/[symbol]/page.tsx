@@ -2,8 +2,8 @@
 
 import { isAxiosError } from 'axios';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, use, useEffect, useMemo, useState } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Loader2, ShoppingCart, TrendingDown, TrendingUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -363,9 +363,9 @@ function SymbolDashboard({ symbol }: { symbol: string }) {
   );
 }
 
-export default function SymbolPage({ params }: { params: Promise<{ symbol: string }> }) {
-  const resolvedParams = use(params);
-  const symbol = decodeURIComponent(resolvedParams.symbol);
+export default function SymbolPage() {
+  const params = useParams();
+  const symbol = decodeURIComponent(params.symbol ?? '');
 
   return (
     <Suspense fallback={<div>Loading symbol dashboard...</div>}>

@@ -58,6 +58,14 @@ export {
 } from './use-market';
 
 export {
+  useStocks,
+  useCreateStock,
+  useUpdateStock,
+  useDeleteStock,
+  useUploadMarketData,
+} from './use-market-admin';
+
+export {
   useSimulations,
   useSimulationDetail,
   useDeleteSimulation,

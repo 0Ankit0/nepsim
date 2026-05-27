@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
+    "dev": "vite",
+    "build": "vite build",
+    "start": "vite preview",
     "lint": "next lint",
     "lint:fix": "next lint --fix",
     "format": "prettier --write \"**/*.{js,jsx,ts,tsx,json,md,yml,yaml}\"",
@@ -20,7 +20,7 @@
     "axios": "^1.13.4",
     "klinecharts": "^9.8.6",
     "lucide-react": "^0.563.0",
-    "next": "16.1.6",
+    "react-router-dom": "^7.9.5",
     "posthog-js": "^1.357.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",
@@ -36,6 +36,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^5.1.0",
     "babel-plugin-react-compiler": "1.0.0",
     "eslint": "^9.39.2",
     "eslint-config-prettier": "^10.1.8",
@@ -43,7 +44,8 @@
     "lint-staged": "^16.2.7",
     "prettier": "^3.8.1",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vite": "^7.2.0"
   },
   "lint-staged": {
     "*.{js,jsx,ts,tsx}": [

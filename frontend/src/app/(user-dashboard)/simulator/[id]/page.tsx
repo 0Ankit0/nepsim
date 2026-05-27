@@ -20,14 +20,14 @@ import {
   ArrowUpRight, Wallet, ArrowRight, Pause, Play, Sparkles
 } from 'lucide-react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { use, useEffect, useMemo, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { simulatorApi } from '@/api/simulator';
 
-export default function TradingDashboardPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id: rawId } = use(params);
-  const id = parseInt(rawId);
+export default function TradingDashboardPage() {
+  const { id: rawId } = useParams();
+  const id = parseInt(rawId ?? '0', 10);
   const { data: sim, isLoading } = useSimulation(id);
   const { data: symbols } = useSymbols();
     const simulationDate = sim?.current_sim_date?.split('T')[0];
