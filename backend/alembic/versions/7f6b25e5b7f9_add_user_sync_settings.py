@@ -24,7 +24,7 @@ def upgrade() -> None:
         "usersyncsettings",
         sa.Column("id", sa.Integer(), nullable=False),
         sa.Column("user_id", sa.Integer(), nullable=False),
-        sa.Column("backup_gemini_key_to_cloud", sa.Boolean(), nullable=False, server_default=sa.text("0")),
+        sa.Column("backup_gemini_key_to_cloud", sa.Boolean(), nullable=False, server_default=sa.text("false")),
         sa.Column("encrypted_gemini_api_key", sqlmodel.sql.sqltypes.AutoString(length=4096), nullable=True),
         sa.Column("last_synced_at", sa.DateTime(), nullable=True),
         sa.Column("created_at", sa.DateTime(), nullable=False),
