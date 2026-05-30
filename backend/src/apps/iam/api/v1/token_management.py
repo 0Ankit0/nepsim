@@ -108,7 +108,7 @@ async def revoke_token(
             )
         
         token_tracking.is_active = False
-        token_tracking.revoked_at = datetime.now(timezone.utc)
+        token_tracking.revoked_at = datetime.utcnow()
         token_tracking.revoke_reason = "Revoked by user"
         await db.commit()
         
@@ -152,7 +152,7 @@ async def revoke_all_tokens(
         
         for token_tracking in tokens:
             token_tracking.is_active = False
-            token_tracking.revoked_at = datetime.now(timezone.utc)
+            token_tracking.revoked_at = datetime.utcnow()
             token_tracking.revoke_reason = "All tokens revoked by user"
         
         await db.commit()

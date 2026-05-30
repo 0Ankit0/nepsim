@@ -1,6 +1,7 @@
 """Watchlist App — FastAPI router."""
 from __future__ import annotations
 
+import asyncio
 import json
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -27,7 +28,13 @@ router = APIRouter(prefix="/watchlist", tags=["Watchlist"])
 
 async def _enrich_item(item: WatchlistItem) -> WatchlistItemResponse:
     """Enrich a WatchlistItem with live price data from Supabase."""
-    quote = await SupabaseMarketService.get_latest_quote(item.symbol)
+    try:
+        quote = await asyncio.wait_for(
+            SupabaseMarketService.get_latest_quote(item.symbol),
+            timeout=4,
+        )
+    except TimeoutError:
+        quote = None
     return WatchlistItemResponse(
         id=item.id,
         symbol=item.symbol,

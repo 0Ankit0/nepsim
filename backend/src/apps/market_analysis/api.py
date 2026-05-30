@@ -1,6 +1,7 @@
 """Market Analysis App — FastAPI router."""
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 from typing import Optional
 
@@ -44,7 +45,13 @@ async def top_stocks(
     as_of_date: Optional[str] = Query(None, description="Clamp analysis to rows on or before YYYY-MM-DD"),
 ):
     """Get top stocks ranked by overall analysis score. Public endpoint."""
-    results = await get_top_stocks(limit=limit, signal_filter=signal, as_of_date=as_of_date)
+    try:
+        results = await asyncio.wait_for(
+            get_top_stocks(limit=limit, signal_filter=signal, as_of_date=as_of_date),
+            timeout=8,
+        )
+    except TimeoutError as exc:
+        raise HTTPException(status_code=504, detail="Market data provider timeout") from exc
     return TopStocksResponse(
         generated_at=datetime.now().isoformat(),
         count=len(results),
@@ -57,7 +64,13 @@ async def market_overview(
     as_of_date: Optional[str] = Query(None, description="Clamp overview to rows on or before YYYY-MM-DD"),
 ):
     """Get market-wide signal distribution across all NEPSE symbols. Public endpoint."""
-    results = await get_top_stocks(limit=9999, as_of_date=as_of_date)
+    try:
+        results = await asyncio.wait_for(
+            get_top_stocks(limit=9999, as_of_date=as_of_date),
+            timeout=8,
+        )
+    except TimeoutError as exc:
+        raise HTTPException(status_code=504, detail="Market data provider timeout") from exc
     total = len(results)
     strong_buy = sum(1 for r in results if r.signal == "STRONG_BUY")
     buy = sum(1 for r in results if r.signal == "BUY")
@@ -92,7 +105,13 @@ async def stock_360_view(
     - Trend analysis (MA alignment, support/resistance, Ichimoku),
     - Similar historical patterns found via indicator fingerprinting.
     """
-    result = await get_stock_360_view(symbol.upper(), as_of_date=as_of_date)
+    try:
+        result = await asyncio.wait_for(
+            get_stock_360_view(symbol.upper(), as_of_date=as_of_date),
+            timeout=10,
+        )
+    except TimeoutError as exc:
+        raise HTTPException(status_code=504, detail="Market data provider timeout") from exc
     if not result:
         raise HTTPException(status_code=404, detail=f"No market data found for symbol '{symbol}'.")
     return result
@@ -104,11 +123,15 @@ async def analyze_symbol(
     as_of_date: Optional[str] = Query(None, description="Clamp analysis to rows on or before YYYY-MM-DD"),
 ):
     """Analyze a single NEPSE symbol. Public endpoint."""
-    result = await (
-        analyze_symbol_from_supabase_as_of(symbol.upper(), as_of_date=as_of_date)
-        if as_of_date
-        else analyze_symbol_from_supabase(symbol.upper())
-    )
+    try:
+        result = await asyncio.wait_for(
+            analyze_symbol_from_supabase_as_of(symbol.upper(), as_of_date=as_of_date)
+            if as_of_date
+            else analyze_symbol_from_supabase(symbol.upper()),
+            timeout=8,
+        )
+    except TimeoutError as exc:
+        raise HTTPException(status_code=504, detail="Market data provider timeout") from exc
     if not result:
         raise HTTPException(status_code=404, detail=f"No market data found for symbol '{symbol}'.")
     return _to_schema(result)

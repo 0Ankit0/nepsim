@@ -15,12 +15,12 @@ ALGORITHM = "HS256"
 
 
 class TokenType(str, Enum):
-    ACCESS = "access"
-    REFRESH = "refresh"
-    PASSWORD_RESET = "password_reset"
-    EMAIL_VERIFICATION = "email_verification"
-    TEMP_AUTH = "temp_auth"
-    BEARER = "bearer"
+    ACCESS = "ACCESS"
+    REFRESH = "REFRESH"
+    PASSWORD_RESET = "PASSWORD_RESET"
+    EMAIL_VERIFICATION = "EMAIL_VERIFICATION"
+    TEMP_AUTH = "TEMP_AUTH"
+    BEARER = "BEARER"
 
 
 def create_access_token(

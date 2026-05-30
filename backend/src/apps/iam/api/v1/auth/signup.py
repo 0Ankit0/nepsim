@@ -98,7 +98,7 @@ async def signup(
             token_type=TokenType.ACCESS,
             ip_address=ip_address,
             user_agent=user_agent,
-            expires_at=datetime.fromtimestamp(access_payload["exp"], tz=timezone.utc)
+            expires_at=datetime.utcfromtimestamp(access_payload["exp"])
         )
         db.add(access_token_tracking)
         
@@ -109,7 +109,7 @@ async def signup(
             token_type=TokenType.REFRESH,
             ip_address=ip_address,
             user_agent=user_agent,
-            expires_at=datetime.fromtimestamp(refresh_payload["exp"], tz=timezone.utc)
+            expires_at=datetime.utcfromtimestamp(refresh_payload["exp"])
         )
         db.add(refresh_token_tracking)
         await db.commit()
